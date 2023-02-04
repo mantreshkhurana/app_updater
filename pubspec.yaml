@@ -1,6 +1,6 @@
 name: app_updater
 description: A flutter package to update your app to the latest version with ease.
-version: 1.0.0
+version: 1.0.1
 homepage: https://github.com/mantreshkhurana/app_updater
 repository: https://github.com/mantreshkhurana/app_updater
 

@@ -9,11 +9,11 @@ Check for app updates and show a dialog to update the app.
 
 ## Installation
 
-Add `app_updater: ^1.0.0` in your project's pubspec.yaml:
+Add `app_updater: ^1.0.1` in your project's pubspec.yaml:
 
 ```yaml
 dependencies:
-  app_updater: ^1.0.0
+  app_updater: ^1.0.1
 ```
 
 ## Usage
