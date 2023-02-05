@@ -1,3 +1,7 @@
+## 1.0.2
+
+- Documentation Update.
+
 ## 1.0.1
 
 - Documentation Update.

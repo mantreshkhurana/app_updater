@@ -13,14 +13,13 @@ class OpenStore {
   /// Returns an instance using the default [OpenStore].
   static OpenStore get instance => _instance;
 
-  static const _playMarketUrl =
-      'https://play.google.com/store/apps/details?id=';
-  static const _appStoreUrlIOS = 'https://apps.apple.com/app';
-  static const _appStoreUrlMacOS =
+  static const playMarketUrl = 'https://play.google.com/store/apps/details?id=';
+  static const appStoreUrlIOS = 'https://apps.apple.com/app';
+  static const appStoreUrlMacOS =
       'https://apps.apple.com/ru/app/g-app-launcher/id';
-  static const _microsoftStoreUrl = 'https://apps.microsoft.com/store/detail/';
+  static const microsoftStoreUrl = 'https://apps.microsoft.com/store/detail/';
 
-  final _platformNotSupportedException = Exception('Platform not supported');
+  final platformNotSupportedException = Exception('Platform not supported');
 
   /// Main method of this package
   /// Allows to open your app's page in store by platform
@@ -70,44 +69,44 @@ class OpenStore {
     }
 
     if (Platform.isIOS) {
-      await _openIOS(appName, appStoreId);
+      await openIOS(appName, appStoreId);
       return;
     }
     if (Platform.isMacOS) {
-      await _openMacOS(appStoreId, appStoreIdMacOS);
+      await openMacOS(appStoreId, appStoreIdMacOS);
       return;
     }
     if (Platform.isAndroid) {
-      await _openAndroid(androidAppBundleId);
+      await openAndroid(androidAppBundleId);
       return;
     }
     if (Platform.isWindows) {
-      await _opnWindows(windowsProductId);
+      await openWindows(windowsProductId);
       return;
     }
 
-    throw _platformNotSupportedException;
+    throw platformNotSupportedException;
   }
 
-  Future _openAndroid(String? androidAppBundleId) async {
+  Future openAndroid(String? androidAppBundleId) async {
     if (androidAppBundleId != null) {
-      await _openUrl('$_playMarketUrl$androidAppBundleId');
+      await openUrl('$playMarketUrl$androidAppBundleId');
       return;
     }
     throw CantLaunchPageException("androidAppBundleId is not passed");
   }
 
-  Future _openIOS(String? appName, String? appStoreId) async {
+  Future openIOS(String? appName, String? appStoreId) async {
     if (appStoreId != null) {
-      await _openUrl('$_appStoreUrlIOS/$appName/id$appStoreId');
+      await openUrl('$appStoreUrlIOS/$appName/id$appStoreId');
       return;
     }
     throw CantLaunchPageException("appStoreId is not passed");
   }
 
-  Future _openMacOS(String? appStoreId, String? appStoreIdMacOS) async {
+  Future openMacOS(String? appStoreId, String? appStoreIdMacOS) async {
     if (appStoreId != null || appStoreIdMacOS != null) {
-      await _openUrl('$_appStoreUrlMacOS${appStoreIdMacOS ?? appStoreId}');
+      await openUrl('$appStoreUrlMacOS${appStoreIdMacOS ?? appStoreId}');
       return;
     }
     throw CantLaunchPageException(
@@ -115,15 +114,15 @@ class OpenStore {
     );
   }
 
-  Future _opnWindows(String? windowsProductId) async {
+  Future openWindows(String? windowsProductId) async {
     if (windowsProductId != null) {
-      await _openUrl('$_microsoftStoreUrl$windowsProductId');
+      await openUrl('$microsoftStoreUrl$windowsProductId');
       return;
     }
     throw CantLaunchPageException("windowsProductId is not passed");
   }
 
-  Future<void> _openUrl(String url) async {
+  Future<void> openUrl(String url) async {
     final uri = Uri.parse(url);
     if (await canLaunchUrl(uri)) {
       await launchUrl(

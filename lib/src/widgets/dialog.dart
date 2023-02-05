@@ -103,5 +103,26 @@ Future<void> updateNow(
                         ],
                       ),
                     )
-                  : null;
+                  : showDialog(
+                      context: context,
+                      builder: (context) => AlertDialog(
+                        title: Text('Update $appName'),
+                        content: const Text('New version is available'),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(context),
+                            child: const Text('Later'),
+                          ),
+                          TextButton(
+                            onPressed: () {
+                              Navigator.pop(context);
+                              OpenStore.instance.open(
+                                androidAppBundleId: androidAppId,
+                              );
+                            },
+                            child: const Text('Update'),
+                          ),
+                        ],
+                      ),
+                    );
 }
