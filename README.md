@@ -9,11 +9,11 @@ Check for app updates and show a dialog to update the app, open app/play store f
 
 ## Installation
 
-Add `app_updater: ^1.0.2` in your project's pubspec.yaml:
+Add `app_updater: ^1.0.3` in your project's pubspec.yaml:
 
 ```yaml
 dependencies:
-  app_updater: ^1.0.2
+  app_updater: ^1.0.3
 ```
 
 ## Usage
@@ -27,6 +27,19 @@ import 'package:app_updater/app_updater.dart';
 Then use `checkAppUpdate` in your code:
 
 > checkAppUpdate function won't show any dialog in iOS Simulator. [Source](https://stackoverflow.com/questions/13645554/itunes-app-link-cannot-open-page-in-safari-in-simulator-and-also-idevices)
+
+### Default Usage
+
+```dart
+checkAppUpdate(
+    context,
+    appName: 'Example App',
+    iosAppId: '123456789',
+    androidAppBundleId: 'com.example.app',
+);
+```
+
+### Custom Usage
 
 ```dart
 checkAppUpdate(
