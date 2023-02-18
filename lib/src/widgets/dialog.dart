@@ -17,6 +17,7 @@ void checkAppUpdate(
   bool isDismissible = true,
   Widget? customAndroidDialog,
   Widget? customIOSDialog,
+  void Function()? noUpdateCallBack,
 }) async {
   checker.checkUpdate().then(
     (value) {
@@ -32,6 +33,9 @@ void checkAppUpdate(
           customIOSDialog,
         );
       } else {
+        if (noUpdateCallBack != null) {
+          noUpdateCallBack();
+        }
         debugPrint('No update available');
       }
     },
