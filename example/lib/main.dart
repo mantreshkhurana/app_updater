@@ -59,6 +59,7 @@ class _MyHomePageState extends State<MyHomePage> {
             appName: 'Example App',
             iosAppId: '123456789',
             androidAppBundleId: 'com.example.app',
+            isDismissible: false,
             customDialog: true,
             customAndroidDialog: AlertDialog(
               title: const Text('Update Available'),

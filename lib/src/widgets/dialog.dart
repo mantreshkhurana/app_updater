@@ -14,8 +14,10 @@ void checkAppUpdate(
   required String iosAppId,
   required String androidAppBundleId,
   bool customDialog = false,
+  bool isDismissible = true,
   Widget? customAndroidDialog,
   Widget? customIOSDialog,
+  void Function()? noUpdateCallBack,
 }) async {
   checker.checkUpdate().then(
     (value) {
@@ -26,10 +28,14 @@ void checkAppUpdate(
           iosAppId,
           androidAppBundleId,
           customDialog,
+          isDismissible,
           customAndroidDialog,
           customIOSDialog,
         );
       } else {
+        if (noUpdateCallBack != null) {
+          noUpdateCallBack();
+        }
         debugPrint('No update available');
       }
     },
@@ -43,30 +49,35 @@ Future<void> updateNow(
   String iosAppId,
   String androidAppId,
   bool customDialog,
+  bool isDismissible,
   Widget? customAndroidDialog,
   Widget? customIOSDialog,
 ) async {
   customDialog == true && Platform.isAndroid && customAndroidDialog != null
       ? showDialog(
           context: context,
+          barrierDismissible: isDismissible,
           builder: (context) => customAndroidDialog,
         )
       : customDialog == true && Platform.isIOS && customIOSDialog != null
           ? showCupertinoDialog(
               context: context,
+              barrierDismissible: isDismissible,
               builder: (context) => customIOSDialog,
             )
           : Platform.isAndroid
               ? showDialog(
                   context: context,
+                  barrierDismissible: isDismissible,
                   builder: (context) => AlertDialog(
                     title: Text('Update $appName'),
                     content: const Text('New version is available'),
                     actions: [
-                      TextButton(
-                        onPressed: () => Navigator.pop(context),
-                        child: const Text('Later'),
-                      ),
+                      if (isDismissible)
+                        TextButton(
+                          onPressed: () => Navigator.pop(context),
+                          child: const Text('Later'),
+                        ),
                       TextButton(
                         onPressed: () {
                           Navigator.pop(context);
@@ -82,14 +93,16 @@ Future<void> updateNow(
               : Platform.isIOS
                   ? showCupertinoDialog(
                       context: context,
+                      barrierDismissible: isDismissible,
                       builder: (context) => CupertinoAlertDialog(
                         title: Text('Update $appName'),
                         content: const Text('New version is available'),
                         actions: [
-                          CupertinoDialogAction(
-                            onPressed: () => Navigator.pop(context),
-                            child: const Text('Later'),
-                          ),
+                          if (isDismissible)
+                            CupertinoDialogAction(
+                              onPressed: () => Navigator.pop(context),
+                              child: const Text('Later'),
+                            ),
                           CupertinoDialogAction(
                             onPressed: () {
                               Navigator.pop(context);
@@ -105,14 +118,16 @@ Future<void> updateNow(
                     )
                   : showDialog(
                       context: context,
+                      barrierDismissible: isDismissible,
                       builder: (context) => AlertDialog(
                         title: Text('Update $appName'),
                         content: const Text('New version is available'),
                         actions: [
-                          TextButton(
-                            onPressed: () => Navigator.pop(context),
-                            child: const Text('Later'),
-                          ),
+                          if (isDismissible)
+                            TextButton(
+                              onPressed: () => Navigator.pop(context),
+                              child: const Text('Later'),
+                            ),
                           TextButton(
                             onPressed: () {
                               Navigator.pop(context);
