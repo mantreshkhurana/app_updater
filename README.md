@@ -9,11 +9,11 @@ Check for app updates and show a dialog to update the app, open app/play store f
 
 ## Installation
 
-Add `app_updater: ^1.0.3` in your project's pubspec.yaml:
+Add `app_updater: ^1.0.4` in your project's pubspec.yaml:
 
 ```yaml
 dependencies:
-  app_updater: ^1.0.3
+  app_updater: ^1.0.4
 ```
 
 ## Usage
@@ -47,6 +47,7 @@ checkAppUpdate(
     appName: 'Example App',
     iosAppId: '123456789',
     androidAppBundleId: 'com.example.app',
+    isDismissible: true,
     customDialog: true,
     customAndroidDialog: AlertDialog(
         title: const Text('Update Available'),
