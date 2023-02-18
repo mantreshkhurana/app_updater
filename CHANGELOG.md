@@ -5,18 +5,18 @@
 
 ## 1.0.3
 
-- Documentation Update.
+- Documentation update.
 
 ## 1.0.2
 
-- Documentation Update.
+- Documentation update.
 
 ## 1.0.1
 
-- Documentation Update.
+- Documentation update.
 
 ## 1.0.0
 
-- Initial Release.
-- Prebuilt Adaptive Dialogs.
-- Customizable Adaptive Dialogs.
+- Initial release.
+- Prebuilt adaptive dialogs.
+- Customizable adaptive dialogs.
