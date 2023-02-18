@@ -1,3 +1,8 @@
+## 1.0.4
+
+- isDismissible parameter added.
+- noUpdateCallback parameter added.
+
 ## 1.0.3
 
 - Documentation Update.
