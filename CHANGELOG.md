@@ -1,3 +1,7 @@
+## 1.0.6
+
+- Bug fixes & improvements.
+
 ## 1.0.5
 
 - Dependencies update.
