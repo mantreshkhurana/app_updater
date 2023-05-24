@@ -116,4 +116,4 @@ onTap(){
 
 ## Author
 
-- [**Mantresh Khurana**](https://github.com/mantreshkhurana)
+- [Mantresh Khurana](https://github.com/mantreshkhurana)
