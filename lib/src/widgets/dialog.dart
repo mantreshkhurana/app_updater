@@ -1,8 +1,8 @@
 import 'dart:io' show Platform;
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:store_version_checker/store_version_checker.dart';
 import '../open_store/open_store.dart';
+import '../version_checker/store_version_checker.dart';
 
 /// Check for app update using [StoreVersionChecker] package
 final checker = StoreVersionChecker();
@@ -13,7 +13,6 @@ void checkAppUpdate(
   required String appName,
   required String iosAppId,
   required String androidAppBundleId,
-  bool customDialog = false,
   bool isDismissible = true,
   Widget? customAndroidDialog,
   Widget? customIOSDialog,
@@ -27,7 +26,6 @@ void checkAppUpdate(
           appName,
           iosAppId,
           androidAppBundleId,
-          customDialog,
           isDismissible,
           customAndroidDialog,
           customIOSDialog,
@@ -48,18 +46,17 @@ Future<void> updateNow(
   String appName,
   String iosAppId,
   String androidAppId,
-  bool customDialog,
   bool isDismissible,
   Widget? customAndroidDialog,
   Widget? customIOSDialog,
 ) async {
-  customDialog == true && Platform.isAndroid && customAndroidDialog != null
+  customAndroidDialog != null && Platform.isAndroid
       ? showDialog(
           context: context,
           barrierDismissible: isDismissible,
           builder: (context) => customAndroidDialog,
         )
-      : customDialog == true && Platform.isIOS && customIOSDialog != null
+      : customIOSDialog != null && Platform.isIOS
           ? showCupertinoDialog(
               context: context,
               barrierDismissible: isDismissible,

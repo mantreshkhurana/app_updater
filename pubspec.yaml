@@ -13,7 +13,8 @@ dependencies:
     sdk: flutter
 
   url_launcher: ^6.1.10
-  store_version_checker: ^0.0.3
+  http: ^0.13.5
+  package_info_plus: ^4.0.1
 
 dev_dependencies:
   flutter_test:
@@ -23,3 +24,11 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  
+  plugin:
+    platforms:
+      android:
+        package: com.mantreshkhurana.app_updater
+        pluginClass: StoreVersionCheckerPlugin
+      ios:
+        pluginClass: StoreVersionCheckerPlugin

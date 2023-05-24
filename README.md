@@ -3,7 +3,7 @@
 [![GitHub stars](https://img.shields.io/github/stars/mantreshkhurana/app_updater.svg?style=social)](https://github.com/mantreshkhurana/app_updater)
 [![pub package](https://img.shields.io/pub/v/app_updater.svg)](https://pub.dartlang.org/packages/app_updater)
 
-Check for app updates and show a dialog to update the app, open app/play store from your app.
+Check for app updates and show a dialog to update the app, open App Store/Play Store/Windows Store/macOS App Store/Linux App Store from your app.
 
 ![Screenshot](https://raw.githubusercontent.com/mantreshkhurana/app_updater/stable/screenshots/screenshot-1.png)
 
@@ -48,7 +48,6 @@ checkAppUpdate(
     iosAppId: '123456789',
     androidAppBundleId: 'com.example.app',
     isDismissible: true,
-    customDialog: true,
     customAndroidDialog: AlertDialog(
         title: const Text('Update Available'),
         content: const Text('Please update the app to continue'),
@@ -61,7 +60,7 @@ checkAppUpdate(
         ),
         TextButton(
             onPressed: () {
-            OpenStore.instance.open(
+            openAppStore(
                 androidAppBundleId: 'com.example.app',
             );
             Navigator.pop(context);
@@ -82,7 +81,7 @@ checkAppUpdate(
         ),
         CupertinoDialogAction(
             onPressed: () {
-            OpenStore.instance.open(
+            openAppStore(
                 appName: 'Example App',
                 appStoreId: '123456789',
             );
@@ -101,15 +100,20 @@ This function is inspired from [open_store](https://pub.dev/packages/open_store)
 
 ```dart
 onTap(){
-    OpenStore.instance.open(
+    openAppStore(
         appName: 'Example App',
-        appStoreId: '123456789',
+        iosAppId: '123456789',
         androidAppBundleId: 'com.example.app',
+        // macos, windows, linux TBD
     );
 }
 ```
 
 ## Credits
 
-- [store_version_checker](https://pub.dev/packages/store_version_checker)
 - [url_launcher](https://pub.dev/packages/url_launcher)
+- [package_info_plus](https://pub.dev/packages/package_info_plus)
+
+## Author
+
+- [**Mantresh Khurana**](https://github.com/mantreshkhurana)

@@ -60,7 +60,6 @@ class _MyHomePageState extends State<MyHomePage> {
             iosAppId: '123456789',
             androidAppBundleId: 'com.example.app',
             isDismissible: false,
-            customDialog: true,
             customAndroidDialog: AlertDialog(
               title: const Text('Update Available'),
               content: const Text('Please update the app to continue'),
@@ -73,7 +72,9 @@ class _MyHomePageState extends State<MyHomePage> {
                 ),
                 TextButton(
                   onPressed: () {
-                    OpenStore.instance.open(
+                    openAppStore(
+                      appName: 'Example App',
+                      appStoreId: '123456789',
                       androidAppBundleId: 'com.example.app',
                     );
                     Navigator.pop(context);

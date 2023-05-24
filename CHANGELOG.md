@@ -1,3 +1,10 @@
+## 1.0.7
+
+- `customDialog` parameter removed, it will automatically detect if the dialog is custom or not.
+- Windows Store support added.
+- macOS App Store support added.
+- Linux App Store support added.
+
 ## 1.0.6
 
 - Bug fixes & improvements.

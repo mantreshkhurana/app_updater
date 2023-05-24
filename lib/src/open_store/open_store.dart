@@ -134,3 +134,15 @@ class OpenStore {
     throw CantLaunchPageException('Could not launch $url');
   }
 }
+
+openAppStore({
+  required String appName,
+  required String appStoreId,
+  required String androidAppBundleId,
+}) async {
+  await OpenStore.instance.open(
+    appName: appName,
+    appStoreId: appStoreId,
+    androidAppBundleId: androidAppBundleId,
+  );
+}
