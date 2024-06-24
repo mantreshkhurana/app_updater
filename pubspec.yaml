@@ -12,7 +12,7 @@ dependencies:
   flutter:
     sdk: flutter
 
-  url_launcher: ^6.1.10
+  url_launcher: ^6.1.0
   store_version_checker: ^1.0.1
 
 dev_dependencies:
