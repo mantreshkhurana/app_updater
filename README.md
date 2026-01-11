@@ -5,7 +5,13 @@
 
 Check for app updates and show platform-native dialogs. Supports iOS, Android, macOS, Windows, and Linux with adaptive UI for each platform.
 
-![Screenshot](https://raw.githubusercontent.com/mantreshkhurana/app_updater/stable/screenshots/screenshot-1.png)
+| Platform | Dialog Style |
+|----------|--------------|
+| iOS | ![iOS Dialog](./screenshots/ios-screenshot.png) |
+| Android | ![Android Dialog](./screenshots/android-screenshot.png) |
+| macOS | ![macOS Dialog](./screenshots/macos-screenshot.png) |
+| Windows | ![Windows Dialog](./screenshots/windows-screenshot.png) |
+| Linux | ![Linux Dialog](./screenshots/linux-screenshot.png) |
 
 ## Features
 

@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## 1.0.8
+
+- Fixed a bug where the "Do Not Ask Again" preference was not being respected on some platforms.
+- Improved error handling when fetching version info from custom endpoints.
+- Updated documentation with examples for new features introduced in 1.0.7.
+
 ## 1.0.7
 
 ### Breaking Changes
