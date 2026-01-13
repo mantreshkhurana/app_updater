@@ -37,7 +37,7 @@ Add `app_updater` to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  app_updater: ^3.0.0
+  app_updater: ^1.1.0
 ```
 
 ## Quick Start
@@ -296,22 +296,6 @@ await appUpdater.showUpdateDialog(
 | `setDoNotAskAgain(value)` | Set "do not ask again" preference |
 | `clearAll()` | Clear all preferences |
 | `clearSkippedVersion()` | Clear skipped version only |
-
-## Migration from v2.x
-
-```dart
-// Before (v2.x)
-final updateInfo = await checkAppUpdate(
-  context,
-  iosAppId: '123456789',
-);
-
-// After (v3.x)
-final appUpdater = AppUpdater.configure(
-  iosAppId: '123456789',
-);
-final updateInfo = await appUpdater.checkAndShowUpdateDialog(context);
-```
 
 ## Notes
 

@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## 1.1.0
+
+- Removed outdated migration section from README.
+- Documentation cleanup.
+
 ## 1.0.9
 
 - Fixed App Store & Play Store version scraping to handle recent changes in store layouts.
