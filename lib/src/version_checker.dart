@@ -250,27 +250,86 @@ class AppUpdater {
         Uri.parse(url),
         headers: {
           'User-Agent':
-              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept':
+              'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.5',
         },
       );
       if (response.statusCode == 200) {
-        // Try to find version in the HTML response using regex
-        final versionRegex = RegExp(r'\[\[\["([0-9]+\.[0-9]+\.[0-9]+)"\]\]');
-        final match = versionRegex.firstMatch(response.body);
-        if (match != null) {
-          return match.group(1);
+        final body = response.body;
+
+        // Pattern 1: Version after triple closing brackets (current Play Store format)
+        // Matches: ]]],"2.25.37.76",null or ]]],"1.0.29",null
+        final pattern1 = RegExp(r'\]\]\],"(\d+\.\d+\.\d+(?:\.\d+)?)",null');
+
+        // Pattern 2: Version in array followed by null values
+        // Matches: ,"1.2.3",null,null,null
+        final pattern2 = RegExp(r',"(\d+\.\d+\.\d+(?:\.\d+)?)",null,null');
+
+        // Pattern 3: Version after array end with specific structure
+        // Matches: "]]],"1.2.3"
+        final pattern3 = RegExp(r'"\]\]\],"(\d+\.\d+\.\d+(?:\.\d+)?)"');
+
+        // Pattern 4: Look for version in nested arrays
+        final pattern4 = RegExp(r'\[\["(\d+\.\d+\.\d+(?:\.\d+)?)"\]\]');
+
+        // Pattern 5: Version followed by null array pattern
+        final pattern5 = RegExp(r'"(\d+\.\d+\.\d+(?:\.\d+)?)",\[null,null');
+
+        // Try each pattern in order of reliability
+        for (final pattern in [pattern1, pattern2, pattern3, pattern5, pattern4]) {
+          final match = pattern.firstMatch(body);
+          if (match != null) {
+            final version = match.group(1);
+            if (version != null && _isValidVersion(version)) {
+              return version;
+            }
+          }
         }
-        // Alternative pattern
-        final altRegex = RegExp(r'Current Version.*?>([\d.]+)<');
-        final altMatch = altRegex.firstMatch(response.body);
-        if (altMatch != null) {
-          return altMatch.group(1);
+
+        // Fallback: Find all version-like strings and return the most likely one
+        // Look for versions with 3 or 4 parts (e.g., 1.2.3 or 1.2.3.4)
+        final allVersions =
+            RegExp(r'"(\d+\.\d+\.\d+(?:\.\d+)?)"').allMatches(body);
+        final versionCounts = <String, int>{};
+        for (final match in allVersions) {
+          final version = match.group(1);
+          if (version != null && _isValidVersion(version)) {
+            versionCounts[version] = (versionCounts[version] ?? 0) + 1;
+          }
+        }
+
+        // Return the version that appears most frequently (likely the app version)
+        if (versionCounts.isNotEmpty) {
+          final sortedVersions = versionCounts.entries.toList()
+            ..sort((a, b) => b.value.compareTo(a.value));
+          return sortedVersions.first.key;
         }
       }
     } catch (e) {
       debugPrint('Error fetching Play Store version: $e');
     }
     return null;
+  }
+
+  /// Validate that a string looks like a valid version number
+  static bool _isValidVersion(String version) {
+    final parts = version.split('.');
+    if (parts.isEmpty || parts.length > 4) return false;
+
+    // Check that each part is a reasonable number (not too large)
+    for (final part in parts) {
+      final num = int.tryParse(part);
+      if (num == null || num < 0 || num > 9999) return false;
+    }
+
+    // Filter out versions that are likely timestamps or other numbers
+    // (e.g., years like 2024, or very large numbers)
+    final firstPart = int.tryParse(parts.first);
+    if (firstPart != null && firstPart > 999) return false;
+
+    return true;
   }
 
   /// Fetch latest version from Microsoft Store

@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## 1.0.9
+
+- Fixed App Store & Play Store version scraping to handle recent changes in store layouts.
+- Improved compatibility with latest Flutter stable release.
+- Minor performance optimizations in version checking logic.
+
 ## 1.0.8
 
 - Fixed a bug where the "Do Not Ask Again" preference was not being respected on some platforms.
