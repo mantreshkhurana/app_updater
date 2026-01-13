@@ -37,7 +37,7 @@ Add `app_updater` to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  app_updater: ^1.1.0
+  app_updater: ^1.1.1
 ```
 
 ## Quick Start

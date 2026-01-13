@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## 1.1.1
+
+- Fixed an issue where the "Do Not Ask Again" preference was not being saved correctly on some platforms.
+- Improved version comparison logic to handle edge cases with pre-release versions.
+- Updated dependencies to their latest versions for better compatibility and security.
+
 ## 1.1.0
 
 - Removed outdated migration section from README.
