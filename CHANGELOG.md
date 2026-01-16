@@ -2,6 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
+## 1.1.2
+
+- Maintenance release with dependency updates.
+
 ## 1.1.1
 
 - Fixed an issue where the "Do Not Ask Again" preference was not being saved correctly on some platforms.

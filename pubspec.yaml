@@ -1,6 +1,6 @@
 name: app_updater
 description: A flutter package to update your app to the latest version with ease. Supports iOS, Android, macOS, Windows, and Linux with platform-native update dialogs.
-version: 1.1.1
+version: 1.1.2
 homepage: https://github.com/mantreshkhurana/app_updater
 repository: https://github.com/mantreshkhurana/app_updater
 issue_tracker: https://github.com/mantreshkhurana/app_updater/issues
@@ -19,11 +19,11 @@ dependencies:
   flutter:
     sdk: flutter
 
-  url_launcher: ^6.3.1
-  http: ^1.2.2
-  package_info_plus: ^8.1.0
-  xml: ^6.5.0
-  shared_preferences: ^2.3.4
+  url_launcher: ^6.3.2
+  http: ^1.6.0
+  package_info_plus: ^9.0.0
+  xml: ^6.6.1
+  shared_preferences: ^2.5.4
 
 dev_dependencies:
   flutter_test:
