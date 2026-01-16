@@ -2,6 +2,107 @@
 
 All notable changes to this project will be documented in this file.
 
+## 2.0.0
+
+### New Features
+
+- **Release Notes Display**: Automatically fetch and display release notes/changelogs in update dialogs
+  - Fetches from App Store (iOS/macOS), Flathub (Linux), GitHub Releases, and custom endpoints
+  - New `showReleaseNotes` parameter in `showUpdateDialog()` (enabled by default)
+  - Release notes are displayed in a scrollable container within the dialog
+
+- **Update Frequency Control**: Prevent checking for updates too frequently
+  - New `checkFrequency` parameter in `AppUpdaterConfig` (e.g., `Duration(days: 1)`)
+  - `checkForUpdate(respectFrequency: false)` to bypass frequency check
+  - Automatically tracks last check time in preferences
+
+- **Background/Silent Checking**: Check for updates without blocking the UI
+  - New `startBackgroundChecking(Duration interval)` method for periodic checks
+  - New `stopBackgroundChecking()` method to cancel background checks
+  - New `updateStream` to listen for update notifications
+  - New `performBackgroundCheck()` for single background check
+  - New `dispose()` method to clean up resources
+
+- **Force Update by Minimum Version**: Require users to update if below a version
+  - New `minimumVersion` parameter in `AppUpdaterConfig`
+  - Support for `minimumVersion` in custom JSON/XML endpoints
+  - New `requiresForceUpdate` getter on `UpdateInfo`
+  - Automatic `isPersistent: true` behavior when force update is required
+
+- **Update Urgency Levels**: Communicate update importance to users
+  - New `UpdateUrgency` enum: `low`, `medium`, `high`, `critical`
+  - Dialog icon and color automatically change based on urgency
+  - Support for `urgency` field in custom endpoints and Firebase Remote Config
+
+- **Analytics & Callbacks**: Track user interactions with update dialogs
+  - New `onAnalyticsEvent` callback in `AppUpdaterConfig`
+  - New `UpdateAnalyticsEvent` class with `toMap()` for analytics services
+  - Predefined event names: `dialogShown`, `updateAccepted`, `updateDeclined`, etc.
+  - Track impressions and dismissals via `UpdatePreferences`
+
+- **GitHub Releases Support**: Check for updates from GitHub releases
+  - New `githubOwner` and `githubRepo` parameters in `AppUpdaterConfig`
+  - New `githubIncludePrereleases` to include beta/prerelease versions
+  - Automatically fetches version, release notes, and download URL
+  - New `GitHubRelease` class for release metadata
+
+- **TestFlight Support (iOS)**: Support beta updates via TestFlight
+  - New `testFlightEnabled` parameter in `AppUpdaterConfig`
+  - New `testFlightUrl` for custom TestFlight URLs
+  - New `openTestFlight()` method to open TestFlight
+  - New `getTestFlightUrl()` method
+
+- **Firebase Remote Config Integration**: Dynamic version control via Firebase
+  - New `firebaseRemoteConfigEnabled` parameter
+  - New `FirebaseRemoteConfigSettings` class for key configuration
+  - New `firebaseConfigFetcher` callback to fetch values
+  - Support for all update parameters (version, minimumVersion, urgency, etc.)
+
+- **Localization / i18n**: Built-in support for translations
+  - New `UpdateStrings` class with all dialog text
+  - New `strings` parameter in `AppUpdaterConfig`
+  - Message placeholders: `{currentVersion}`, `{latestVersion}`
+  - Includes all button text, titles, and error messages
+
+- **Enhanced UpdateInfo**: More metadata about updates
+  - New `releaseNotes` property for changelog text
+  - New `urgency` property for update priority
+  - New `minimumVersion` property
+  - New `isMandatory` property
+  - New `releaseDate` property
+  - New `updateSizeBytes` and `formattedUpdateSize` properties
+  - New `requiresForceUpdate` computed property
+  - New `copyWith()` method
+
+### Improvements
+
+- **Enhanced UpdatePreferences**: New preference methods
+  - `getLastCheckTime()` / `setLastCheckTime()` for frequency control
+  - `shouldCheckForUpdate(Duration)` for frequency checking
+  - `getUpdateImpressions()` / `incrementUpdateImpressions()` for analytics
+  - `getUpdateDismissals()` / `incrementUpdateDismissals()` for analytics
+
+- **Better Custom Endpoint Support**: Extended JSON/XML schema
+  - Support for `releaseNotes` / `release_notes` / `changelog` fields
+  - Support for `minimumVersion` / `minimum_version` fields
+  - Support for `urgency` field (low, medium, high, critical)
+  - Support for `mandatory` / `force_update` fields
+
+- **Improved Dialog UI**: Visual enhancements
+  - Urgency-based icon and color theming
+  - Release notes section with scrollable content
+  - Update size display when available
+  - Better handling of long content
+
+- **Code Quality**: Internal improvements
+  - Comprehensive documentation comments on all public APIs
+  - Better async/await handling with mounted checks
+  - Proper resource cleanup with `dispose()` method
+
+### Breaking Changes
+
+- None - all existing APIs remain backward compatible
+
 ## 1.1.2
 
 - Maintenance release with dependency updates.

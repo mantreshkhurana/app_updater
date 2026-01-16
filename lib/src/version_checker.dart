@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -10,82 +11,576 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:xml/xml.dart' as xml;
 
-/// Enum to specify the Linux store type
+// =============================================================================
+// ENUMS
+// =============================================================================
+
+/// Enum to specify the Linux store type.
+///
+/// Used to determine which Linux app store to check for updates:
+/// - [snap]: Snap Store (snapcraft.io)
+/// - [flathub]: Flathub (flathub.org)
 enum LinuxStoreType {
+  /// Snap Store - Ubuntu's default package format
   snap,
+
+  /// Flathub - Cross-distribution Flatpak repository
   flathub,
 }
 
-/// Enum to specify the update dialog style
+/// Enum to specify the update dialog style.
+///
+/// Each style provides a platform-native look and feel:
+/// - [adaptive]: Automatically selects the best style based on the current platform
+/// - [material]: Material Design 3 style (Android)
+/// - [cupertino]: Apple's design language (iOS/macOS)
+/// - [fluent]: Microsoft's Fluent Design (Windows)
+/// - [adwaita]: GNOME's Adwaita design (Linux)
 enum UpdateDialogStyle {
-  /// Adaptive style based on platform
+  /// Adaptive style based on platform - automatically selects the appropriate
+  /// style for the current platform
   adaptive,
 
-  /// Material Design style (Android-like)
+  /// Material Design 3 style (Android-like) with rounded corners and elevation
   material,
 
-  /// Cupertino style (iOS-like)
+  /// Cupertino style (iOS/macOS-like) with Apple's native dialog appearance
   cupertino,
 
-  /// Fluent Design style (Windows-like)
+  /// Fluent Design style (Windows-like) with Microsoft's modern UI patterns
   fluent,
 
-  /// GNOME/Adwaita style (Linux-like)
+  /// GNOME/Adwaita style (Linux-like) with GTK-inspired design
   adwaita,
 }
 
-/// Result of version check containing version info and update URL
+/// Enum to specify the urgency level of an update.
+///
+/// Use urgency levels to communicate the importance of updates to users:
+/// - [low]: Minor updates, bug fixes, or small improvements
+/// - [medium]: Regular feature updates or moderate improvements
+/// - [high]: Important updates with significant features or fixes
+/// - [critical]: Security patches or breaking changes that require immediate action
+enum UpdateUrgency {
+  /// Low priority - minor improvements, can be skipped
+  low,
+
+  /// Medium priority - regular updates with new features
+  medium,
+
+  /// High priority - important updates, strongly recommended
+  high,
+
+  /// Critical priority - security fixes or breaking changes, should not be skipped
+  critical,
+}
+
+/// Enum to specify the type of Android in-app update.
+///
+/// Android's Play Core library supports two update flows:
+/// - [flexible]: Downloads in background, user can continue using the app
+/// - [immediate]: Full-screen update that blocks app usage until complete
+enum AndroidUpdateType {
+  /// Flexible update - downloads in background while user continues using app
+  flexible,
+
+  /// Immediate update - full-screen blocking update experience
+  immediate,
+}
+
+// =============================================================================
+// DATA CLASSES
+// =============================================================================
+
+/// Result of version check containing version info, update URL, and metadata.
+///
+/// This class encapsulates all information about an available update:
+/// ```dart
+/// final updateInfo = await appUpdater.checkForUpdate();
+/// if (updateInfo.updateAvailable) {
+///   print('New version: ${updateInfo.latestVersion}');
+///   print('Release notes: ${updateInfo.releaseNotes}');
+/// }
+/// ```
 class UpdateInfo {
+  /// The current installed version of the app
   final String currentVersion;
+
+  /// The latest available version from the store/endpoint (null if check failed)
   final String? latestVersion;
+
+  /// The URL to update/download the app (null if not available)
   final String? updateUrl;
+
+  /// Whether an update is available
   final bool updateAvailable;
 
+  /// Release notes or changelog for the new version (if available)
+  final String? releaseNotes;
+
+  /// The urgency level of the update
+  final UpdateUrgency urgency;
+
+  /// Minimum required version - if current version is below this, force update
+  final String? minimumVersion;
+
+  /// Whether this update is mandatory (cannot be skipped)
+  final bool isMandatory;
+
+  /// Release date of the new version (if available)
+  final DateTime? releaseDate;
+
+  /// Size of the update in bytes (if available)
+  final int? updateSizeBytes;
+
+  /// Creates an UpdateInfo instance with version and update details.
   UpdateInfo({
     required this.currentVersion,
     this.latestVersion,
     this.updateUrl,
     required this.updateAvailable,
+    this.releaseNotes,
+    this.urgency = UpdateUrgency.medium,
+    this.minimumVersion,
+    this.isMandatory = false,
+    this.releaseDate,
+    this.updateSizeBytes,
   });
+
+  /// Returns true if the current version is below the minimum required version.
+  ///
+  /// This indicates a forced update is required regardless of user preferences.
+  bool get requiresForceUpdate {
+    if (minimumVersion == null) return isMandatory;
+    return _isNewerVersion(currentVersion, minimumVersion!);
+  }
+
+  /// Formatted update size string (e.g., "15.2 MB")
+  String? get formattedUpdateSize {
+    if (updateSizeBytes == null) return null;
+    if (updateSizeBytes! < 1024) return '$updateSizeBytes B';
+    if (updateSizeBytes! < 1024 * 1024) {
+      return '${(updateSizeBytes! / 1024).toStringAsFixed(1)} KB';
+    }
+    if (updateSizeBytes! < 1024 * 1024 * 1024) {
+      return '${(updateSizeBytes! / (1024 * 1024)).toStringAsFixed(1)} MB';
+    }
+    return '${(updateSizeBytes! / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
+  }
+
+  /// Compare two version strings (returns true if latestVersion is newer)
+  static bool _isNewerVersion(String currentVersion, String latestVersion) {
+    try {
+      final current = currentVersion.split('.').map(int.parse).toList();
+      final latest = latestVersion.split('.').map(int.parse).toList();
+
+      while (current.length < latest.length) {
+        current.add(0);
+      }
+      while (latest.length < current.length) {
+        latest.add(0);
+      }
+
+      for (var i = 0; i < current.length; i++) {
+        if (latest[i] > current[i]) return true;
+        if (latest[i] < current[i]) return false;
+      }
+      return false;
+    } catch (e) {
+      return currentVersion != latestVersion;
+    }
+  }
 
   @override
   String toString() {
-    return 'UpdateInfo(currentVersion: $currentVersion, latestVersion: $latestVersion, updateUrl: $updateUrl, updateAvailable: $updateAvailable)';
+    return 'UpdateInfo(currentVersion: $currentVersion, latestVersion: $latestVersion, '
+        'updateUrl: $updateUrl, updateAvailable: $updateAvailable, urgency: $urgency, '
+        'isMandatory: $isMandatory, releaseNotes: ${releaseNotes != null ? "[provided]" : "null"})';
+  }
+
+  /// Creates a copy of this UpdateInfo with the given fields replaced.
+  UpdateInfo copyWith({
+    String? currentVersion,
+    String? latestVersion,
+    String? updateUrl,
+    bool? updateAvailable,
+    String? releaseNotes,
+    UpdateUrgency? urgency,
+    String? minimumVersion,
+    bool? isMandatory,
+    DateTime? releaseDate,
+    int? updateSizeBytes,
+  }) {
+    return UpdateInfo(
+      currentVersion: currentVersion ?? this.currentVersion,
+      latestVersion: latestVersion ?? this.latestVersion,
+      updateUrl: updateUrl ?? this.updateUrl,
+      updateAvailable: updateAvailable ?? this.updateAvailable,
+      releaseNotes: releaseNotes ?? this.releaseNotes,
+      urgency: urgency ?? this.urgency,
+      minimumVersion: minimumVersion ?? this.minimumVersion,
+      isMandatory: isMandatory ?? this.isMandatory,
+      releaseDate: releaseDate ?? this.releaseDate,
+      updateSizeBytes: updateSizeBytes ?? this.updateSizeBytes,
+    );
   }
 }
 
-/// Preferences manager for update dialog settings
+/// Analytics event data for update-related actions.
+///
+/// This class captures user interactions with update dialogs for analytics:
+/// ```dart
+/// appUpdater.onAnalyticsEvent = (event) {
+///   analytics.logEvent(event.eventName, event.toMap());
+/// };
+/// ```
+class UpdateAnalyticsEvent {
+  /// The name of the event (e.g., 'update_dialog_shown', 'update_accepted')
+  final String eventName;
+
+  /// Current app version
+  final String currentVersion;
+
+  /// Available update version (if applicable)
+  final String? latestVersion;
+
+  /// The urgency level of the update
+  final UpdateUrgency? urgency;
+
+  /// Platform the event occurred on
+  final String platform;
+
+  /// Timestamp of the event
+  final DateTime timestamp;
+
+  /// Additional custom parameters
+  final Map<String, dynamic>? customParams;
+
+  /// Creates an analytics event with the given parameters.
+  UpdateAnalyticsEvent({
+    required this.eventName,
+    required this.currentVersion,
+    this.latestVersion,
+    this.urgency,
+    required this.platform,
+    DateTime? timestamp,
+    this.customParams,
+  }) : timestamp = timestamp ?? DateTime.now();
+
+  /// Predefined event names for consistency
+  static const String dialogShown = 'update_dialog_shown';
+  static const String updateAccepted = 'update_accepted';
+  static const String updateDeclined = 'update_declined';
+  static const String versionSkipped = 'update_version_skipped';
+  static const String doNotAskAgain = 'update_do_not_ask_again';
+  static const String updateCheckStarted = 'update_check_started';
+  static const String updateCheckCompleted = 'update_check_completed';
+  static const String updateCheckFailed = 'update_check_failed';
+  static const String storeOpened = 'update_store_opened';
+
+  /// Converts the event to a map for analytics services.
+  Map<String, dynamic> toMap() {
+    return {
+      'event_name': eventName,
+      'current_version': currentVersion,
+      if (latestVersion != null) 'latest_version': latestVersion,
+      if (urgency != null) 'urgency': urgency!.name,
+      'platform': platform,
+      'timestamp': timestamp.toIso8601String(),
+      ...?customParams,
+    };
+  }
+}
+
+/// Localized strings for update dialogs.
+///
+/// Use this class to provide translations for all dialog text:
+/// ```dart
+/// final frenchStrings = UpdateStrings(
+///   updateAvailableTitle: 'Mise à jour disponible',
+///   updateAvailableMessage: 'Une nouvelle version est disponible.',
+///   updateButton: 'Mettre à jour',
+///   laterButton: 'Plus tard',
+/// );
+/// ```
+class UpdateStrings {
+  /// Title for the update available dialog
+  final String updateAvailableTitle;
+
+  /// Message template for update available (use {currentVersion} and {latestVersion} as placeholders)
+  final String updateAvailableMessage;
+
+  /// Text for the update/download button
+  final String updateButton;
+
+  /// Text for the later/cancel button
+  final String laterButton;
+
+  /// Text for the skip version option
+  final String skipVersionButton;
+
+  /// Text for the do not ask again option
+  final String doNotAskAgainButton;
+
+  /// Title for critical/mandatory updates
+  final String criticalUpdateTitle;
+
+  /// Message for critical/mandatory updates
+  final String criticalUpdateMessage;
+
+  /// Title for release notes section
+  final String releaseNotesTitle;
+
+  /// Text shown when release notes are loading
+  final String loadingText;
+
+  /// Text shown when update check fails
+  final String errorText;
+
+  /// Text shown when app is up to date
+  final String upToDateText;
+
+  /// Creates localized strings with all required translations.
+  const UpdateStrings({
+    this.updateAvailableTitle = 'Update Available',
+    this.updateAvailableMessage =
+        'A new version ({latestVersion}) is available. You are currently on version {currentVersion}.',
+    this.updateButton = 'Update Now',
+    this.laterButton = 'Later',
+    this.skipVersionButton = 'Skip this version',
+    this.doNotAskAgainButton = "Don't remind me again",
+    this.criticalUpdateTitle = 'Critical Update Required',
+    this.criticalUpdateMessage =
+        'This update contains important fixes. Please update to continue.',
+    this.releaseNotesTitle = "What's New",
+    this.loadingText = 'Checking for updates...',
+    this.errorText = 'Unable to check for updates',
+    this.upToDateText = 'Your app is up to date!',
+  });
+
+  /// Default English strings
+  static const UpdateStrings defaultStrings = UpdateStrings();
+
+  /// Formats the update message with version placeholders replaced.
+  String formatUpdateMessage(String currentVersion, String latestVersion) {
+    return updateAvailableMessage
+        .replaceAll('{currentVersion}', currentVersion)
+        .replaceAll('{latestVersion}', latestVersion);
+  }
+}
+
+/// GitHub release information.
+///
+/// Contains metadata about a GitHub release for update checking:
+/// ```dart
+/// final appUpdater = AppUpdater.configure(
+///   githubOwner: 'mycompany',
+///   githubRepo: 'myapp',
+/// );
+/// ```
+class GitHubRelease {
+  /// The tag name (usually version number like 'v1.0.0' or '1.0.0')
+  final String tagName;
+
+  /// The release name/title
+  final String name;
+
+  /// Release notes body (markdown)
+  final String body;
+
+  /// Whether this is a prerelease
+  final bool prerelease;
+
+  /// Whether this is a draft release
+  final bool draft;
+
+  /// When the release was published
+  final DateTime publishedAt;
+
+  /// Direct download URL for the release assets
+  final String? downloadUrl;
+
+  /// URL to the release page on GitHub
+  final String htmlUrl;
+
+  /// Creates a GitHubRelease from parsed data.
+  GitHubRelease({
+    required this.tagName,
+    required this.name,
+    required this.body,
+    required this.prerelease,
+    required this.draft,
+    required this.publishedAt,
+    this.downloadUrl,
+    required this.htmlUrl,
+  });
+
+  /// Parses version from tag name (removes 'v' prefix if present)
+  String get version {
+    if (tagName.toLowerCase().startsWith('v')) {
+      return tagName.substring(1);
+    }
+    return tagName;
+  }
+
+  /// Creates a GitHubRelease from JSON API response.
+  factory GitHubRelease.fromJson(Map<String, dynamic> json) {
+    String? downloadUrl;
+    final assets = json['assets'] as List?;
+    if (assets != null && assets.isNotEmpty) {
+      downloadUrl = assets[0]['browser_download_url'];
+    }
+
+    return GitHubRelease(
+      tagName: json['tag_name'] ?? '',
+      name: json['name'] ?? '',
+      body: json['body'] ?? '',
+      prerelease: json['prerelease'] ?? false,
+      draft: json['draft'] ?? false,
+      publishedAt: DateTime.parse(
+          json['published_at'] ?? DateTime.now().toIso8601String()),
+      downloadUrl: downloadUrl,
+      htmlUrl: json['html_url'] ?? '',
+    );
+  }
+}
+
+/// TestFlight beta information for iOS.
+///
+/// Contains metadata about TestFlight builds:
+/// ```dart
+/// final appUpdater = AppUpdater.configure(
+///   testFlightEnabled: true,
+///   iosAppId: '123456789',
+/// );
+/// ```
+class TestFlightInfo {
+  /// The beta build version
+  final String version;
+
+  /// The build number
+  final String buildNumber;
+
+  /// When the build expires
+  final DateTime? expiresAt;
+
+  /// TestFlight URL
+  final String testFlightUrl;
+
+  /// Creates TestFlight info with the given details.
+  TestFlightInfo({
+    required this.version,
+    required this.buildNumber,
+    this.expiresAt,
+    required this.testFlightUrl,
+  });
+}
+
+/// Firebase Remote Config integration settings.
+///
+/// Configure how the package reads update info from Firebase Remote Config:
+/// ```dart
+/// final config = FirebaseRemoteConfigSettings(
+///   minimumVersionKey: 'minimum_app_version',
+///   latestVersionKey: 'latest_app_version',
+///   updateUrlKey: 'app_update_url',
+/// );
+/// ```
+class FirebaseRemoteConfigSettings {
+  /// Key for minimum required version in Remote Config
+  final String minimumVersionKey;
+
+  /// Key for latest available version in Remote Config
+  final String latestVersionKey;
+
+  /// Key for update URL in Remote Config
+  final String updateUrlKey;
+
+  /// Key for release notes in Remote Config
+  final String releaseNotesKey;
+
+  /// Key for update urgency in Remote Config
+  final String urgencyKey;
+
+  /// Key for mandatory update flag in Remote Config
+  final String mandatoryKey;
+
+  /// Creates Firebase Remote Config settings with the specified keys.
+  const FirebaseRemoteConfigSettings({
+    this.minimumVersionKey = 'minimum_app_version',
+    this.latestVersionKey = 'latest_app_version',
+    this.updateUrlKey = 'app_update_url',
+    this.releaseNotesKey = 'release_notes',
+    this.urgencyKey = 'update_urgency',
+    this.mandatoryKey = 'mandatory_update',
+  });
+}
+
+// =============================================================================
+// PREFERENCES MANAGER
+// =============================================================================
+
+/// Preferences manager for update dialog settings.
+///
+/// This class manages persistent storage of user preferences related to updates:
+/// - Skipped versions
+/// - "Do not ask again" setting
+/// - Last check time for frequency control
+/// - Last dismissed time
+///
+/// ```dart
+/// // Check if user skipped a version
+/// if (await UpdatePreferences.isVersionSkipped('2.0.0')) {
+///   return; // Don't show dialog for skipped version
+/// }
+///
+/// // Reset all preferences
+/// await UpdatePreferences.clearAll();
+/// ```
 class UpdatePreferences {
   static const String _keySkippedVersion = 'app_updater_skipped_version';
   static const String _keyDoNotAskAgain = 'app_updater_do_not_ask_again';
   static const String _keyLastDismissedTime = 'app_updater_last_dismissed_time';
+  static const String _keyLastCheckTime = 'app_updater_last_check_time';
+  static const String _keyUpdateImpressions = 'app_updater_impressions';
+  static const String _keyUpdateDismissals = 'app_updater_dismissals';
 
-  /// Check if user has chosen to skip a specific version
+  /// Check if user has chosen to skip a specific version.
+  ///
+  /// Returns true if the user previously chose to skip [version].
   static Future<bool> isVersionSkipped(String version) async {
     final prefs = await SharedPreferences.getInstance();
     final skippedVersion = prefs.getString(_keySkippedVersion);
     return skippedVersion == version;
   }
 
-  /// Skip a specific version (won't show dialog for this version again)
+  /// Skip a specific version (won't show dialog for this version again).
+  ///
+  /// Call this when the user clicks "Skip this version" to remember their choice.
   static Future<void> skipVersion(String version) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_keySkippedVersion, version);
   }
 
-  /// Check if user has chosen "do not ask again"
+  /// Check if user has chosen "do not ask again".
+  ///
+  /// Returns true if the user previously chose to not be reminded about updates.
   static Future<bool> isDoNotAskAgain() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getBool(_keyDoNotAskAgain) ?? false;
   }
 
-  /// Set "do not ask again" preference
+  /// Set "do not ask again" preference.
+  ///
+  /// Set to true when the user clicks "Don't remind me again".
   static Future<void> setDoNotAskAgain(bool value) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_keyDoNotAskAgain, value);
   }
 
-  /// Get last dismissed time
+  /// Get last dismissed time.
+  ///
+  /// Returns the DateTime when the user last dismissed an update dialog.
   static Future<DateTime?> getLastDismissedTime() async {
     final prefs = await SharedPreferences.getInstance();
     final timestamp = prefs.getInt(_keyLastDismissedTime);
@@ -94,33 +589,112 @@ class UpdatePreferences {
         : null;
   }
 
-  /// Set last dismissed time
+  /// Set last dismissed time.
+  ///
+  /// Called when the user dismisses an update dialog.
   static Future<void> setLastDismissedTime(DateTime time) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_keyLastDismissedTime, time.millisecondsSinceEpoch);
   }
 
-  /// Clear all update preferences (reset)
+  /// Get last update check time.
+  ///
+  /// Returns the DateTime when updates were last checked.
+  static Future<DateTime?> getLastCheckTime() async {
+    final prefs = await SharedPreferences.getInstance();
+    final timestamp = prefs.getInt(_keyLastCheckTime);
+    return timestamp != null
+        ? DateTime.fromMillisecondsSinceEpoch(timestamp)
+        : null;
+  }
+
+  /// Set last update check time.
+  ///
+  /// Called automatically when checkForUpdate() is called.
+  static Future<void> setLastCheckTime(DateTime time) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_keyLastCheckTime, time.millisecondsSinceEpoch);
+  }
+
+  /// Check if enough time has passed since last check based on frequency.
+  ///
+  /// [checkFrequency] is the minimum duration between checks.
+  /// Returns true if a check should be performed.
+  static Future<bool> shouldCheckForUpdate(Duration checkFrequency) async {
+    final lastCheck = await getLastCheckTime();
+    if (lastCheck == null) return true;
+    return DateTime.now().difference(lastCheck) >= checkFrequency;
+  }
+
+  /// Get the number of times update dialog has been shown.
+  static Future<int> getUpdateImpressions() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getInt(_keyUpdateImpressions) ?? 0;
+  }
+
+  /// Increment update impressions count.
+  static Future<void> incrementUpdateImpressions() async {
+    final prefs = await SharedPreferences.getInstance();
+    final current = prefs.getInt(_keyUpdateImpressions) ?? 0;
+    await prefs.setInt(_keyUpdateImpressions, current + 1);
+  }
+
+  /// Get the number of times user has dismissed update dialog.
+  static Future<int> getUpdateDismissals() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getInt(_keyUpdateDismissals) ?? 0;
+  }
+
+  /// Increment update dismissals count.
+  static Future<void> incrementUpdateDismissals() async {
+    final prefs = await SharedPreferences.getInstance();
+    final current = prefs.getInt(_keyUpdateDismissals) ?? 0;
+    await prefs.setInt(_keyUpdateDismissals, current + 1);
+  }
+
+  /// Clear all update preferences (reset).
+  ///
+  /// Resets all stored preferences including skipped versions and "do not ask again".
   static Future<void> clearAll() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_keySkippedVersion);
     await prefs.remove(_keyDoNotAskAgain);
     await prefs.remove(_keyLastDismissedTime);
+    await prefs.remove(_keyLastCheckTime);
+    await prefs.remove(_keyUpdateImpressions);
+    await prefs.remove(_keyUpdateDismissals);
   }
 
-  /// Clear skipped version only
+  /// Clear skipped version only.
+  ///
+  /// Removes only the skipped version preference, keeping other settings.
   static Future<void> clearSkippedVersion() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_keySkippedVersion);
   }
 }
 
-/// Configuration class for AppUpdater
+// =============================================================================
+// CONFIGURATION
+// =============================================================================
+
+/// Configuration class for AppUpdater.
+///
+/// This class holds all configuration options for the update checker:
+/// ```dart
+/// final config = AppUpdaterConfig(
+///   iosAppId: '123456789',
+///   androidPackageName: 'com.example.app',
+///   githubOwner: 'mycompany',
+///   githubRepo: 'myapp',
+///   checkFrequency: Duration(days: 1),
+/// );
+/// ```
 class AppUpdaterConfig {
-  /// iOS App Store app ID
+  /// iOS App Store app ID (numeric ID from App Store Connect)
   final String? iosAppId;
 
-  /// macOS App Store app ID
+  /// macOS App Store app ID (numeric ID from App Store Connect)
   final String? macAppId;
 
   /// Android package name (auto-detected if not provided)
@@ -144,6 +718,58 @@ class AppUpdaterConfig {
   /// Linux store type (snap or flathub)
   final LinuxStoreType linuxStoreType;
 
+  // === GitHub Releases Support ===
+
+  /// GitHub repository owner (username or organization)
+  final String? githubOwner;
+
+  /// GitHub repository name
+  final String? githubRepo;
+
+  /// Include GitHub prereleases in update checks
+  final bool githubIncludePrereleases;
+
+  // === TestFlight Support (iOS) ===
+
+  /// Enable TestFlight beta update checking
+  final bool testFlightEnabled;
+
+  /// Custom TestFlight URL (optional)
+  final String? testFlightUrl;
+
+  // === Firebase Remote Config ===
+
+  /// Enable Firebase Remote Config for version info
+  final bool firebaseRemoteConfigEnabled;
+
+  /// Firebase Remote Config keys configuration
+  final FirebaseRemoteConfigSettings? firebaseSettings;
+
+  /// Callback to fetch values from Firebase Remote Config
+  /// Must be provided if firebaseRemoteConfigEnabled is true
+  final Future<Map<String, dynamic>> Function()? firebaseConfigFetcher;
+
+  // === Update Frequency Control ===
+
+  /// How often to check for updates (null = always check)
+  final Duration? checkFrequency;
+
+  // === Minimum Version / Force Update ===
+
+  /// Minimum required version - forces update if current version is below this
+  final String? minimumVersion;
+
+  // === Analytics ===
+
+  /// Callback for analytics events
+  final void Function(UpdateAnalyticsEvent event)? onAnalyticsEvent;
+
+  // === Localization ===
+
+  /// Localized strings for dialogs
+  final UpdateStrings strings;
+
+  /// Creates an AppUpdater configuration with the specified options.
   const AppUpdaterConfig({
     this.iosAppId,
     this.macAppId,
@@ -154,19 +780,156 @@ class AppUpdaterConfig {
     this.customXmlUrl,
     this.customJsonUrl,
     this.linuxStoreType = LinuxStoreType.snap,
+    this.githubOwner,
+    this.githubRepo,
+    this.githubIncludePrereleases = false,
+    this.testFlightEnabled = false,
+    this.testFlightUrl,
+    this.firebaseRemoteConfigEnabled = false,
+    this.firebaseSettings,
+    this.firebaseConfigFetcher,
+    this.checkFrequency,
+    this.minimumVersion,
+    this.onAnalyticsEvent,
+    this.strings = const UpdateStrings(),
   });
+
+  /// Creates a copy of this config with the given fields replaced.
+  AppUpdaterConfig copyWith({
+    String? iosAppId,
+    String? macAppId,
+    String? androidPackageName,
+    String? microsoftProductId,
+    String? snapName,
+    String? flathubAppId,
+    String? customXmlUrl,
+    String? customJsonUrl,
+    LinuxStoreType? linuxStoreType,
+    String? githubOwner,
+    String? githubRepo,
+    bool? githubIncludePrereleases,
+    bool? testFlightEnabled,
+    String? testFlightUrl,
+    bool? firebaseRemoteConfigEnabled,
+    FirebaseRemoteConfigSettings? firebaseSettings,
+    Future<Map<String, dynamic>> Function()? firebaseConfigFetcher,
+    Duration? checkFrequency,
+    String? minimumVersion,
+    void Function(UpdateAnalyticsEvent event)? onAnalyticsEvent,
+    UpdateStrings? strings,
+  }) {
+    return AppUpdaterConfig(
+      iosAppId: iosAppId ?? this.iosAppId,
+      macAppId: macAppId ?? this.macAppId,
+      androidPackageName: androidPackageName ?? this.androidPackageName,
+      microsoftProductId: microsoftProductId ?? this.microsoftProductId,
+      snapName: snapName ?? this.snapName,
+      flathubAppId: flathubAppId ?? this.flathubAppId,
+      customXmlUrl: customXmlUrl ?? this.customXmlUrl,
+      customJsonUrl: customJsonUrl ?? this.customJsonUrl,
+      linuxStoreType: linuxStoreType ?? this.linuxStoreType,
+      githubOwner: githubOwner ?? this.githubOwner,
+      githubRepo: githubRepo ?? this.githubRepo,
+      githubIncludePrereleases:
+          githubIncludePrereleases ?? this.githubIncludePrereleases,
+      testFlightEnabled: testFlightEnabled ?? this.testFlightEnabled,
+      testFlightUrl: testFlightUrl ?? this.testFlightUrl,
+      firebaseRemoteConfigEnabled:
+          firebaseRemoteConfigEnabled ?? this.firebaseRemoteConfigEnabled,
+      firebaseSettings: firebaseSettings ?? this.firebaseSettings,
+      firebaseConfigFetcher: firebaseConfigFetcher ?? this.firebaseConfigFetcher,
+      checkFrequency: checkFrequency ?? this.checkFrequency,
+      minimumVersion: minimumVersion ?? this.minimumVersion,
+      onAnalyticsEvent: onAnalyticsEvent ?? this.onAnalyticsEvent,
+      strings: strings ?? this.strings,
+    );
+  }
 }
 
-/// Main class for checking and managing app updates across all platforms
+// =============================================================================
+// MAIN APP UPDATER CLASS
+// =============================================================================
+
+/// Main class for checking and managing app updates across all platforms.
+///
+/// AppUpdater provides a comprehensive solution for checking app updates
+/// from various sources and displaying platform-native update dialogs.
+///
+/// ## Basic Usage
+/// ```dart
+/// final appUpdater = AppUpdater.configure(
+///   iosAppId: '123456789',
+///   androidPackageName: 'com.example.app',
+/// );
+///
+/// // Check and show dialog if update available
+/// await appUpdater.checkAndShowUpdateDialog(context);
+/// ```
+///
+/// ## With GitHub Releases
+/// ```dart
+/// final appUpdater = AppUpdater.configure(
+///   githubOwner: 'mycompany',
+///   githubRepo: 'myapp',
+/// );
+/// ```
+///
+/// ## With Update Frequency Control
+/// ```dart
+/// final appUpdater = AppUpdater.configure(
+///   iosAppId: '123456789',
+///   checkFrequency: Duration(days: 1), // Only check once per day
+/// );
+/// ```
+///
+/// ## With Analytics
+/// ```dart
+/// final appUpdater = AppUpdater.configure(
+///   iosAppId: '123456789',
+///   onAnalyticsEvent: (event) {
+///     analytics.logEvent(event.eventName, event.toMap());
+///   },
+/// );
+/// ```
 class AppUpdater {
+  /// The configuration for this AppUpdater instance
   final AppUpdaterConfig config;
 
   static PackageInfo? _cachedPackageInfo;
 
-  /// Create an AppUpdater instance with the given configuration
+  /// Timer for background update checking
+  Timer? _backgroundCheckTimer;
+
+  /// Stream controller for background update notifications
+  final StreamController<UpdateInfo> _updateStreamController =
+      StreamController<UpdateInfo>.broadcast();
+
+  /// Stream of update notifications from background checks.
+  ///
+  /// Listen to this stream to receive notifications when updates are found:
+  /// ```dart
+  /// appUpdater.updateStream.listen((updateInfo) {
+  ///   if (updateInfo.updateAvailable) {
+  ///     // Show notification or dialog
+  ///   }
+  /// });
+  /// ```
+  Stream<UpdateInfo> get updateStream => _updateStreamController.stream;
+
+  /// Create an AppUpdater instance with the given configuration.
   AppUpdater(this.config);
 
-  /// Create an AppUpdater with individual parameters (convenience constructor)
+  /// Create an AppUpdater with individual parameters (convenience constructor).
+  ///
+  /// This factory constructor provides a more convenient way to create an
+  /// AppUpdater without explicitly creating an AppUpdaterConfig:
+  /// ```dart
+  /// final appUpdater = AppUpdater.configure(
+  ///   iosAppId: '123456789',
+  ///   androidPackageName: 'com.example.app',
+  ///   checkFrequency: Duration(days: 1),
+  /// );
+  /// ```
   factory AppUpdater.configure({
     String? iosAppId,
     String? macAppId,
@@ -177,6 +940,18 @@ class AppUpdater {
     String? customXmlUrl,
     String? customJsonUrl,
     LinuxStoreType linuxStoreType = LinuxStoreType.snap,
+    String? githubOwner,
+    String? githubRepo,
+    bool githubIncludePrereleases = false,
+    bool testFlightEnabled = false,
+    String? testFlightUrl,
+    bool firebaseRemoteConfigEnabled = false,
+    FirebaseRemoteConfigSettings? firebaseSettings,
+    Future<Map<String, dynamic>> Function()? firebaseConfigFetcher,
+    Duration? checkFrequency,
+    String? minimumVersion,
+    void Function(UpdateAnalyticsEvent event)? onAnalyticsEvent,
+    UpdateStrings strings = const UpdateStrings(),
   }) {
     return AppUpdater(AppUpdaterConfig(
       iosAppId: iosAppId,
@@ -188,8 +963,39 @@ class AppUpdater {
       customXmlUrl: customXmlUrl,
       customJsonUrl: customJsonUrl,
       linuxStoreType: linuxStoreType,
+      githubOwner: githubOwner,
+      githubRepo: githubRepo,
+      githubIncludePrereleases: githubIncludePrereleases,
+      testFlightEnabled: testFlightEnabled,
+      testFlightUrl: testFlightUrl,
+      firebaseRemoteConfigEnabled: firebaseRemoteConfigEnabled,
+      firebaseSettings: firebaseSettings,
+      firebaseConfigFetcher: firebaseConfigFetcher,
+      checkFrequency: checkFrequency,
+      minimumVersion: minimumVersion,
+      onAnalyticsEvent: onAnalyticsEvent,
+      strings: strings,
     ));
   }
+
+  /// Dispose of resources used by this AppUpdater.
+  ///
+  /// Call this when you're done using the AppUpdater to clean up resources:
+  /// ```dart
+  /// @override
+  /// void dispose() {
+  ///   appUpdater.dispose();
+  ///   super.dispose();
+  /// }
+  /// ```
+  void dispose() {
+    stopBackgroundChecking();
+    _updateStreamController.close();
+  }
+
+  // ===========================================================================
+  // PRIVATE HELPER METHODS
+  // ===========================================================================
 
   static Future<PackageInfo> _getPackageInfo() async {
     _cachedPackageInfo ??= await PackageInfo.fromPlatform();
@@ -206,38 +1012,62 @@ class AppUpdater {
     return packageInfo.packageName;
   }
 
+  /// Get the current platform name for analytics
+  String _getPlatformName() {
+    if (kIsWeb) return 'web';
+    if (Platform.isIOS) return 'ios';
+    if (Platform.isAndroid) return 'android';
+    if (Platform.isMacOS) return 'macos';
+    if (Platform.isWindows) return 'windows';
+    if (Platform.isLinux) return 'linux';
+    return 'unknown';
+  }
+
+  /// Track an analytics event
+  void _trackEvent(String eventName,
+      {String? latestVersion, UpdateUrgency? urgency}) async {
+    if (config.onAnalyticsEvent == null) return;
+
+    final currentVersion = await _getCurrentVersion();
+    config.onAnalyticsEvent!(UpdateAnalyticsEvent(
+      eventName: eventName,
+      currentVersion: currentVersion,
+      latestVersion: latestVersion,
+      urgency: urgency,
+      platform: _getPlatformName(),
+    ));
+  }
+
+  // ===========================================================================
+  // VERSION FETCHING METHODS
+  // ===========================================================================
+
   /// Fetch latest version from iOS App Store
-  static Future<String?> _getLatestVersionFromAppStore(String appId) async {
+  static Future<Map<String, dynamic>> _getAppStoreInfo(String appId) async {
     try {
       final url = 'https://itunes.apple.com/lookup?id=$appId';
       final response = await http.get(Uri.parse(url));
       if (response.statusCode == 200) {
         final json = jsonDecode(response.body);
         if (json['resultCount'] > 0) {
-          return json['results'][0]['version'];
+          final result = json['results'][0];
+          return {
+            'version': result['version'],
+            'releaseNotes': result['releaseNotes'],
+            'releaseDate': result['currentVersionReleaseDate'],
+            'fileSizeBytes': result['fileSizeBytes'],
+          };
         }
       }
     } catch (e) {
       debugPrint('Error fetching App Store version: $e');
     }
-    return null;
+    return {};
   }
 
   /// Fetch latest version from macOS App Store
-  static Future<String?> _getLatestVersionFromMacAppStore(String appId) async {
-    try {
-      final url = 'https://itunes.apple.com/lookup?id=$appId';
-      final response = await http.get(Uri.parse(url));
-      if (response.statusCode == 200) {
-        final json = jsonDecode(response.body);
-        if (json['resultCount'] > 0) {
-          return json['results'][0]['version'];
-        }
-      }
-    } catch (e) {
-      debugPrint('Error fetching Mac App Store version: $e');
-    }
-    return null;
+  static Future<Map<String, dynamic>> _getMacAppStoreInfo(String appId) async {
+    return _getAppStoreInfo(appId); // Same API endpoint
   }
 
   /// Fetch latest version from Google Play Store
@@ -260,15 +1090,12 @@ class AppUpdater {
         final body = response.body;
 
         // Pattern 1: Version after triple closing brackets (current Play Store format)
-        // Matches: ]]],"2.25.37.76",null or ]]],"1.0.29",null
         final pattern1 = RegExp(r'\]\]\],"(\d+\.\d+\.\d+(?:\.\d+)?)",null');
 
         // Pattern 2: Version in array followed by null values
-        // Matches: ,"1.2.3",null,null,null
         final pattern2 = RegExp(r',"(\d+\.\d+\.\d+(?:\.\d+)?)",null,null');
 
         // Pattern 3: Version after array end with specific structure
-        // Matches: "]]],"1.2.3"
         final pattern3 = RegExp(r'"\]\]\],"(\d+\.\d+\.\d+(?:\.\d+)?)"');
 
         // Pattern 4: Look for version in nested arrays
@@ -278,7 +1105,8 @@ class AppUpdater {
         final pattern5 = RegExp(r'"(\d+\.\d+\.\d+(?:\.\d+)?)",\[null,null');
 
         // Try each pattern in order of reliability
-        for (final pattern in [pattern1, pattern2, pattern3, pattern5, pattern4]) {
+        for (final pattern
+            in [pattern1, pattern2, pattern3, pattern5, pattern4]) {
           final match = pattern.firstMatch(body);
           if (match != null) {
             final version = match.group(1);
@@ -289,7 +1117,6 @@ class AppUpdater {
         }
 
         // Fallback: Find all version-like strings and return the most likely one
-        // Look for versions with 3 or 4 parts (e.g., 1.2.3 or 1.2.3.4)
         final allVersions =
             RegExp(r'"(\d+\.\d+\.\d+(?:\.\d+)?)"').allMatches(body);
         final versionCounts = <String, int>{};
@@ -300,7 +1127,6 @@ class AppUpdater {
           }
         }
 
-        // Return the version that appears most frequently (likely the app version)
         if (versionCounts.isNotEmpty) {
           final sortedVersions = versionCounts.entries.toList()
             ..sort((a, b) => b.value.compareTo(a.value));
@@ -318,14 +1144,11 @@ class AppUpdater {
     final parts = version.split('.');
     if (parts.isEmpty || parts.length > 4) return false;
 
-    // Check that each part is a reasonable number (not too large)
     for (final part in parts) {
       final num = int.tryParse(part);
       if (num == null || num < 0 || num > 9999) return false;
     }
 
-    // Filter out versions that are likely timestamps or other numbers
-    // (e.g., years like 2024, or very large numbers)
     final firstPart = int.tryParse(parts.first);
     if (firstPart != null && firstPart > 999) return false;
 
@@ -336,13 +1159,11 @@ class AppUpdater {
   static Future<String?> _getLatestVersionFromMicrosoftStore(
       String productId) async {
     try {
-      // Microsoft Store API endpoint
       final url =
           'https://storeedgefd.dsx.mp.microsoft.com/v9.0/products/$productId?market=US&locale=en-US';
       final response = await http.get(Uri.parse(url));
       if (response.statusCode == 200) {
         final json = jsonDecode(response.body);
-        // Navigate through the response to find version
         if (json['Payload'] != null && json['Payload']['Skus'] != null) {
           final skus = json['Payload']['Skus'] as List;
           if (skus.isNotEmpty) {
@@ -371,13 +1192,11 @@ class AppUpdater {
         final json = jsonDecode(response.body);
         if (json['channel-map'] != null) {
           final channelMap = json['channel-map'] as List;
-          // Find the stable channel
           for (var channel in channelMap) {
             if (channel['channel']?['name'] == 'stable') {
               return channel['version'];
             }
           }
-          // If no stable, return first available
           if (channelMap.isNotEmpty) {
             return channelMap[0]['version'];
           }
@@ -390,24 +1209,28 @@ class AppUpdater {
   }
 
   /// Fetch latest version from Flathub
-  static Future<String?> _getLatestVersionFromFlathub(String appId) async {
+  static Future<Map<String, dynamic>> _getFlathubInfo(String appId) async {
     try {
       final url = 'https://flathub.org/api/v2/appstream/$appId';
       final response = await http.get(Uri.parse(url));
       if (response.statusCode == 200) {
         final json = jsonDecode(response.body);
-        // Flathub returns releases array
         if (json['releases'] != null) {
           final releases = json['releases'] as List;
           if (releases.isNotEmpty) {
-            return releases[0]['version'];
+            final latest = releases[0];
+            return {
+              'version': latest['version'],
+              'releaseNotes': latest['description'],
+              'releaseDate': latest['timestamp']?.toString(),
+            };
           }
         }
       }
     } catch (e) {
       debugPrint('Error fetching Flathub version: $e');
     }
-    return null;
+    return {};
   }
 
   /// Fetch latest version from custom XML endpoint
@@ -419,22 +1242,37 @@ class AppUpdater {
         final document = xml.XmlDocument.parse(response.body);
         final versionElements = document.findAllElements('version');
         final urlElements = document.findAllElements('url');
-        final versionElement =
-            versionElements.isNotEmpty ? versionElements.first : null;
-        final urlElement = urlElements.isNotEmpty ? urlElements.first : null;
+        final releaseNotesElements = document.findAllElements('releaseNotes');
+        final minimumVersionElements =
+            document.findAllElements('minimumVersion');
+        final urgencyElements = document.findAllElements('urgency');
+        final mandatoryElements = document.findAllElements('mandatory');
+
         return {
-          'version': versionElement?.innerText,
-          'url': urlElement?.innerText,
+          'version':
+              versionElements.isNotEmpty ? versionElements.first.innerText : null,
+          'url': urlElements.isNotEmpty ? urlElements.first.innerText : null,
+          'releaseNotes': releaseNotesElements.isNotEmpty
+              ? releaseNotesElements.first.innerText
+              : null,
+          'minimumVersion': minimumVersionElements.isNotEmpty
+              ? minimumVersionElements.first.innerText
+              : null,
+          'urgency':
+              urgencyElements.isNotEmpty ? urgencyElements.first.innerText : null,
+          'mandatory': mandatoryElements.isNotEmpty
+              ? mandatoryElements.first.innerText
+              : null,
         };
       }
     } catch (e) {
       debugPrint('Error fetching XML version: $e');
     }
-    return {'version': null, 'url': null};
+    return {};
   }
 
   /// Fetch latest version from custom JSON endpoint
-  static Future<Map<String, String?>> _getLatestVersionFromJSON(
+  static Future<Map<String, dynamic>> _getLatestVersionFromJSON(
       String url) async {
     try {
       final response = await http.get(Uri.parse(url));
@@ -443,12 +1281,78 @@ class AppUpdater {
         return {
           'version': json['version']?.toString(),
           'url': json['url']?.toString(),
+          'releaseNotes': json['releaseNotes']?.toString() ??
+              json['release_notes']?.toString() ??
+              json['changelog']?.toString(),
+          'minimumVersion': json['minimumVersion']?.toString() ??
+              json['minimum_version']?.toString(),
+          'urgency': json['urgency']?.toString(),
+          'mandatory': json['mandatory'] ?? json['force_update'] ?? false,
         };
       }
     } catch (e) {
       debugPrint('Error fetching JSON version: $e');
     }
-    return {'version': null, 'url': null};
+    return {};
+  }
+
+  /// Fetch latest release from GitHub Releases
+  Future<GitHubRelease?> _getLatestGitHubRelease() async {
+    if (config.githubOwner == null || config.githubRepo == null) return null;
+
+    try {
+      final url =
+          'https://api.github.com/repos/${config.githubOwner}/${config.githubRepo}/releases';
+      final response = await http.get(
+        Uri.parse(url),
+        headers: {
+          'Accept': 'application/vnd.github.v3+json',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final releases = jsonDecode(response.body) as List;
+        for (final release in releases) {
+          final githubRelease = GitHubRelease.fromJson(release);
+          // Skip drafts
+          if (githubRelease.draft) continue;
+          // Skip prereleases unless configured to include them
+          if (githubRelease.prerelease && !config.githubIncludePrereleases) {
+            continue;
+          }
+          return githubRelease;
+        }
+      }
+    } catch (e) {
+      debugPrint('Error fetching GitHub releases: $e');
+    }
+    return null;
+  }
+
+  /// Get update info from Firebase Remote Config
+  Future<Map<String, dynamic>> _getFirebaseRemoteConfigInfo() async {
+    if (!config.firebaseRemoteConfigEnabled ||
+        config.firebaseConfigFetcher == null) {
+      return {};
+    }
+
+    try {
+      final settings =
+          config.firebaseSettings ?? const FirebaseRemoteConfigSettings();
+      final remoteValues = await config.firebaseConfigFetcher!();
+
+      return {
+        'version': remoteValues[settings.latestVersionKey]?.toString(),
+        'minimumVersion': remoteValues[settings.minimumVersionKey]?.toString(),
+        'url': remoteValues[settings.updateUrlKey]?.toString(),
+        'releaseNotes': remoteValues[settings.releaseNotesKey]?.toString(),
+        'urgency': remoteValues[settings.urgencyKey]?.toString(),
+        'mandatory': remoteValues[settings.mandatoryKey] ?? false,
+      };
+    } catch (e) {
+      debugPrint('Error fetching Firebase Remote Config: $e');
+    }
+    return {};
   }
 
   /// Compare two version strings (returns true if latestVersion is newer)
@@ -457,7 +1361,6 @@ class AppUpdater {
       final current = currentVersion.split('.').map(int.parse).toList();
       final latest = latestVersion.split('.').map(int.parse).toList();
 
-      // Pad shorter version with zeros
       while (current.length < latest.length) {
         current.add(0);
       }
@@ -471,12 +1374,33 @@ class AppUpdater {
       }
       return false;
     } catch (e) {
-      // Fallback to string comparison if parsing fails
       return currentVersion != latestVersion;
     }
   }
 
-  /// Get the store URL for the current platform
+  /// Parse urgency string to enum
+  UpdateUrgency _parseUrgency(String? urgency) {
+    if (urgency == null) return UpdateUrgency.medium;
+    switch (urgency.toLowerCase()) {
+      case 'low':
+        return UpdateUrgency.low;
+      case 'high':
+        return UpdateUrgency.high;
+      case 'critical':
+        return UpdateUrgency.critical;
+      default:
+        return UpdateUrgency.medium;
+    }
+  }
+
+  // ===========================================================================
+  // PUBLIC API
+  // ===========================================================================
+
+  /// Get the store URL for the current platform.
+  ///
+  /// Returns the appropriate store URL based on the current platform and
+  /// configuration. Returns null if no URL is available.
   String? getStoreUrl() {
     if (kIsWeb) return null;
 
@@ -497,68 +1421,206 @@ class AppUpdater {
         return 'https://flathub.org/apps/${config.flathubAppId}';
       }
     }
+
+    // GitHub releases fallback
+    if (config.githubOwner != null && config.githubRepo != null) {
+      return 'https://github.com/${config.githubOwner}/${config.githubRepo}/releases';
+    }
+
     return null;
   }
 
-  /// Check for updates and return UpdateInfo
-  Future<UpdateInfo> checkForUpdate() async {
-    final currentVersion = await _getCurrentVersion();
-    String? latestVersion;
-    String? updateUrl;
+  /// Get TestFlight URL for iOS beta testing.
+  ///
+  /// Returns the TestFlight URL if configured, otherwise a generic URL.
+  String? getTestFlightUrl() {
+    if (config.testFlightUrl != null) return config.testFlightUrl;
+    if (config.iosAppId != null) {
+      return 'https://testflight.apple.com/join/${config.iosAppId}';
+    }
+    return null;
+  }
 
-    // Check custom endpoints first (they take priority)
-    if (config.customXmlUrl != null) {
-      final result = await _getLatestVersionFromXML(config.customXmlUrl!);
-      latestVersion = result['version'];
-      updateUrl = result['url'];
-    } else if (config.customJsonUrl != null) {
-      final result = await _getLatestVersionFromJSON(config.customJsonUrl!);
-      latestVersion = result['version'];
-      updateUrl = result['url'];
-    } else if (!kIsWeb) {
-      // Platform-specific store checks
-      if (Platform.isIOS && config.iosAppId != null) {
-        latestVersion = await _getLatestVersionFromAppStore(config.iosAppId!);
-        updateUrl = 'https://apps.apple.com/app/id${config.iosAppId}';
-      } else if (Platform.isMacOS && config.macAppId != null) {
-        latestVersion =
-            await _getLatestVersionFromMacAppStore(config.macAppId!);
-        updateUrl = 'https://apps.apple.com/app/id${config.macAppId}';
-      } else if (Platform.isAndroid) {
-        final packageName =
-            config.androidPackageName ?? await _getPackageName();
-        latestVersion = await _getLatestVersionFromPlayStore(packageName);
-        updateUrl =
-            'https://play.google.com/store/apps/details?id=$packageName';
-      } else if (Platform.isWindows && config.microsoftProductId != null) {
-        latestVersion = await _getLatestVersionFromMicrosoftStore(
-            config.microsoftProductId!);
-        updateUrl =
-            'ms-windows-store://pdp/?productid=${config.microsoftProductId}';
-      } else if (Platform.isLinux) {
-        if (config.linuxStoreType == LinuxStoreType.snap &&
-            config.snapName != null) {
-          latestVersion =
-              await _getLatestVersionFromSnapStore(config.snapName!);
-          updateUrl = 'https://snapcraft.io/${config.snapName}';
-        } else if (config.linuxStoreType == LinuxStoreType.flathub &&
-            config.flathubAppId != null) {
-          latestVersion =
-              await _getLatestVersionFromFlathub(config.flathubAppId!);
-          updateUrl = 'https://flathub.org/apps/${config.flathubAppId}';
-        }
+  /// Check for updates and return UpdateInfo.
+  ///
+  /// This method checks for updates from the configured sources and returns
+  /// an [UpdateInfo] object with details about any available update.
+  ///
+  /// ```dart
+  /// final updateInfo = await appUpdater.checkForUpdate();
+  /// if (updateInfo.updateAvailable) {
+  ///   print('Update available: ${updateInfo.latestVersion}');
+  ///   print('Release notes: ${updateInfo.releaseNotes}');
+  /// }
+  /// ```
+  ///
+  /// If [respectFrequency] is true (default), the method will respect the
+  /// configured check frequency and may return cached results.
+  Future<UpdateInfo> checkForUpdate({bool respectFrequency = true}) async {
+    // Check frequency control
+    if (respectFrequency && config.checkFrequency != null) {
+      final shouldCheck =
+          await UpdatePreferences.shouldCheckForUpdate(config.checkFrequency!);
+      if (!shouldCheck) {
+        // Return a basic UpdateInfo indicating no check was performed
+        final currentVersion = await _getCurrentVersion();
+        return UpdateInfo(
+          currentVersion: currentVersion,
+          updateAvailable: false,
+        );
       }
     }
 
-    final updateAvailable = latestVersion != null &&
-        _isNewerVersion(currentVersion, latestVersion);
+    _trackEvent(UpdateAnalyticsEvent.updateCheckStarted);
 
-    return UpdateInfo(
-      currentVersion: currentVersion,
-      latestVersion: latestVersion,
-      updateUrl: updateUrl,
-      updateAvailable: updateAvailable,
-    );
+    final currentVersion = await _getCurrentVersion();
+    String? latestVersion;
+    String? updateUrl;
+    String? releaseNotes;
+    String? minimumVersion = config.minimumVersion;
+    UpdateUrgency urgency = UpdateUrgency.medium;
+    bool isMandatory = false;
+    DateTime? releaseDate;
+    int? updateSizeBytes;
+
+    try {
+      // Check Firebase Remote Config first (highest priority)
+      if (config.firebaseRemoteConfigEnabled) {
+        final firebaseInfo = await _getFirebaseRemoteConfigInfo();
+        if (firebaseInfo['version'] != null) {
+          latestVersion = firebaseInfo['version'];
+          updateUrl = firebaseInfo['url'] ?? getStoreUrl();
+          releaseNotes = firebaseInfo['releaseNotes'];
+          minimumVersion = firebaseInfo['minimumVersion'] ?? minimumVersion;
+          urgency = _parseUrgency(firebaseInfo['urgency']);
+          isMandatory = firebaseInfo['mandatory'] == true;
+        }
+      }
+
+      // Check custom endpoints (second priority)
+      if (latestVersion == null && config.customXmlUrl != null) {
+        final result = await _getLatestVersionFromXML(config.customXmlUrl!);
+        latestVersion = result['version'];
+        updateUrl = result['url'];
+        releaseNotes = result['releaseNotes'];
+        minimumVersion = result['minimumVersion'] ?? minimumVersion;
+        urgency = _parseUrgency(result['urgency']);
+        isMandatory = result['mandatory'] == 'true';
+      } else if (latestVersion == null && config.customJsonUrl != null) {
+        final result = await _getLatestVersionFromJSON(config.customJsonUrl!);
+        latestVersion = result['version'];
+        updateUrl = result['url'];
+        releaseNotes = result['releaseNotes'];
+        minimumVersion = result['minimumVersion'] ?? minimumVersion;
+        urgency = _parseUrgency(result['urgency']);
+        isMandatory = result['mandatory'] == true;
+      }
+
+      // Check GitHub releases
+      if (latestVersion == null &&
+          config.githubOwner != null &&
+          config.githubRepo != null) {
+        final release = await _getLatestGitHubRelease();
+        if (release != null) {
+          latestVersion = release.version;
+          updateUrl = release.downloadUrl ?? release.htmlUrl;
+          releaseNotes = release.body;
+          releaseDate = release.publishedAt;
+        }
+      }
+
+      // Platform-specific store checks
+      if (latestVersion == null && !kIsWeb) {
+        if (Platform.isIOS && config.iosAppId != null) {
+          final info = await _getAppStoreInfo(config.iosAppId!);
+          latestVersion = info['version'];
+          releaseNotes = info['releaseNotes'];
+          if (info['releaseDate'] != null) {
+            releaseDate = DateTime.tryParse(info['releaseDate']);
+          }
+          if (info['fileSizeBytes'] != null) {
+            updateSizeBytes = int.tryParse(info['fileSizeBytes'].toString());
+          }
+          updateUrl = 'https://apps.apple.com/app/id${config.iosAppId}';
+        } else if (Platform.isMacOS && config.macAppId != null) {
+          final info = await _getMacAppStoreInfo(config.macAppId!);
+          latestVersion = info['version'];
+          releaseNotes = info['releaseNotes'];
+          if (info['releaseDate'] != null) {
+            releaseDate = DateTime.tryParse(info['releaseDate']);
+          }
+          updateUrl = 'https://apps.apple.com/app/id${config.macAppId}';
+        } else if (Platform.isAndroid) {
+          final packageName =
+              config.androidPackageName ?? await _getPackageName();
+          latestVersion = await _getLatestVersionFromPlayStore(packageName);
+          updateUrl =
+              'https://play.google.com/store/apps/details?id=$packageName';
+        } else if (Platform.isWindows && config.microsoftProductId != null) {
+          latestVersion = await _getLatestVersionFromMicrosoftStore(
+              config.microsoftProductId!);
+          updateUrl =
+              'ms-windows-store://pdp/?productid=${config.microsoftProductId}';
+        } else if (Platform.isLinux) {
+          if (config.linuxStoreType == LinuxStoreType.snap &&
+              config.snapName != null) {
+            latestVersion =
+                await _getLatestVersionFromSnapStore(config.snapName!);
+            updateUrl = 'https://snapcraft.io/${config.snapName}';
+          } else if (config.linuxStoreType == LinuxStoreType.flathub &&
+              config.flathubAppId != null) {
+            final info = await _getFlathubInfo(config.flathubAppId!);
+            latestVersion = info['version'];
+            releaseNotes = info['releaseNotes'];
+            if (info['releaseDate'] != null) {
+              releaseDate =
+                  DateTime.fromMillisecondsSinceEpoch(info['releaseDate'] * 1000);
+            }
+            updateUrl = 'https://flathub.org/apps/${config.flathubAppId}';
+          }
+        }
+      }
+
+      // Update last check time
+      await UpdatePreferences.setLastCheckTime(DateTime.now());
+
+      final updateAvailable = latestVersion != null &&
+          _isNewerVersion(currentVersion, latestVersion);
+
+      // Check if mandatory due to minimum version
+      if (minimumVersion != null &&
+          _isNewerVersion(currentVersion, minimumVersion)) {
+        isMandatory = true;
+        urgency = UpdateUrgency.critical;
+      }
+
+      _trackEvent(
+        UpdateAnalyticsEvent.updateCheckCompleted,
+        latestVersion: latestVersion,
+        urgency: urgency,
+      );
+
+      return UpdateInfo(
+        currentVersion: currentVersion,
+        latestVersion: latestVersion,
+        updateUrl: updateUrl,
+        updateAvailable: updateAvailable,
+        releaseNotes: releaseNotes,
+        urgency: urgency,
+        minimumVersion: minimumVersion,
+        isMandatory: isMandatory,
+        releaseDate: releaseDate,
+        updateSizeBytes: updateSizeBytes,
+      );
+    } catch (e) {
+      debugPrint('Error checking for update: $e');
+      _trackEvent(UpdateAnalyticsEvent.updateCheckFailed);
+
+      return UpdateInfo(
+        currentVersion: currentVersion,
+        updateAvailable: false,
+      );
+    }
   }
 
   /// Launch URL helper
@@ -592,8 +1654,40 @@ class AppUpdater {
     }
   }
 
+  /// Get urgency color for UI
+  static Color _getUrgencyColor(UpdateUrgency urgency, BuildContext context) {
+    switch (urgency) {
+      case UpdateUrgency.low:
+        return Colors.grey;
+      case UpdateUrgency.medium:
+        return Theme.of(context).colorScheme.primary;
+      case UpdateUrgency.high:
+        return Colors.orange;
+      case UpdateUrgency.critical:
+        return Colors.red;
+    }
+  }
+
+  /// Get urgency icon
+  static IconData _getUrgencyIcon(UpdateUrgency urgency) {
+    switch (urgency) {
+      case UpdateUrgency.low:
+        return Icons.info_outline;
+      case UpdateUrgency.medium:
+        return Icons.system_update;
+      case UpdateUrgency.high:
+        return Icons.warning_amber;
+      case UpdateUrgency.critical:
+        return Icons.error;
+    }
+  }
+
+  // ===========================================================================
+  // DIALOG BUILDERS
+  // ===========================================================================
+
   /// Build Material Design dialog (Android style)
-  static Widget _buildMaterialDialog(
+  Widget _buildMaterialDialog(
     BuildContext context, {
     required UpdateInfo updateInfo,
     required String title,
@@ -602,53 +1696,94 @@ class AppUpdater {
     required String updateText,
     required bool showSkipVersion,
     required bool showDoNotAskAgain,
+    required bool showReleaseNotes,
     required bool isPersistent,
     required VoidCallback? onCancel,
     required VoidCallback? onUpdate,
     required VoidCallback? onSkipVersion,
     required VoidCallback? onDoNotAskAgain,
   }) {
+    final urgencyColor = _getUrgencyColor(updateInfo.urgency, context);
+    final urgencyIcon = _getUrgencyIcon(updateInfo.urgency);
+
     return AlertDialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
       icon: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.primaryContainer,
+          color: urgencyColor.withValues(alpha: 0.1),
           shape: BoxShape.circle,
         ),
         child: Icon(
-          Icons.system_update,
+          urgencyIcon,
           size: 32,
-          color: Theme.of(context).colorScheme.onPrimaryContainer,
+          color: urgencyColor,
         ),
       ),
       title: Text(
         title,
         textAlign: TextAlign.center,
       ),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            message,
-            textAlign: TextAlign.center,
-          ),
-          if (showSkipVersion || showDoNotAskAgain) ...[
-            const SizedBox(height: 16),
-            if (showSkipVersion)
-              TextButton.icon(
-                onPressed: onSkipVersion,
-                icon: const Icon(Icons.skip_next, size: 18),
-                label: const Text('Skip this version'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              message,
+              textAlign: TextAlign.center,
+            ),
+            if (showReleaseNotes && updateInfo.releaseNotes != null) ...[
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      config.strings.releaseNotesTitle,
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      updateInfo.releaseNotes!,
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
+                ),
               ),
-            if (showDoNotAskAgain)
-              TextButton.icon(
-                onPressed: onDoNotAskAgain,
-                icon: const Icon(Icons.notifications_off, size: 18),
-                label: const Text('Don\'t remind me again'),
+            ],
+            if (updateInfo.formattedUpdateSize != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                'Size: ${updateInfo.formattedUpdateSize}',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Colors.grey,
+                    ),
               ),
+            ],
+            if (showSkipVersion || showDoNotAskAgain) ...[
+              const SizedBox(height: 16),
+              if (showSkipVersion)
+                TextButton.icon(
+                  onPressed: onSkipVersion,
+                  icon: const Icon(Icons.skip_next, size: 18),
+                  label: Text(config.strings.skipVersionButton),
+                ),
+              if (showDoNotAskAgain)
+                TextButton.icon(
+                  onPressed: onDoNotAskAgain,
+                  icon: const Icon(Icons.notifications_off, size: 18),
+                  label: Text(config.strings.doNotAskAgainButton),
+                ),
+            ],
           ],
-        ],
+        ),
       ),
       actions: [
         if (!isPersistent)
@@ -677,7 +1812,7 @@ class AppUpdater {
   }
 
   /// Build Cupertino dialog (iOS/macOS style)
-  static Widget _buildCupertinoDialog(
+  Widget _buildCupertinoDialog(
     BuildContext context, {
     required UpdateInfo updateInfo,
     required String title,
@@ -686,12 +1821,17 @@ class AppUpdater {
     required String updateText,
     required bool showSkipVersion,
     required bool showDoNotAskAgain,
+    required bool showReleaseNotes,
     required bool isPersistent,
     required VoidCallback? onCancel,
     required VoidCallback? onUpdate,
     required VoidCallback? onSkipVersion,
     required VoidCallback? onDoNotAskAgain,
   }) {
+    final urgencyColor = updateInfo.urgency == UpdateUrgency.critical
+        ? CupertinoColors.systemRed
+        : CupertinoColors.systemBlue;
+
     return CupertinoAlertDialog(
       title: Column(
         children: [
@@ -699,13 +1839,15 @@ class AppUpdater {
             padding: const EdgeInsets.all(12),
             margin: const EdgeInsets.only(bottom: 12),
             decoration: BoxDecoration(
-              color: CupertinoColors.systemBlue.withValues(alpha: 0.1),
+              color: urgencyColor.withValues(alpha: 0.1),
               shape: BoxShape.circle,
             ),
-            child: const Icon(
-              CupertinoIcons.arrow_down_circle_fill,
+            child: Icon(
+              updateInfo.urgency == UpdateUrgency.critical
+                  ? CupertinoIcons.exclamationmark_circle_fill
+                  : CupertinoIcons.arrow_down_circle_fill,
               size: 36,
-              color: CupertinoColors.systemBlue,
+              color: urgencyColor,
             ),
           ),
           Text(title),
@@ -716,24 +1858,51 @@ class AppUpdater {
         children: [
           const SizedBox(height: 8),
           Text(message),
+          if (showReleaseNotes && updateInfo.releaseNotes != null) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: CupertinoColors.systemGrey6,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    config.strings.releaseNotesTitle,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    updateInfo.releaseNotes!,
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+          ],
           if (showSkipVersion || showDoNotAskAgain) ...[
             const SizedBox(height: 16),
             if (showSkipVersion)
               CupertinoButton(
                 padding: EdgeInsets.zero,
                 onPressed: onSkipVersion,
-                child: const Text(
-                  'Skip this version',
-                  style: TextStyle(fontSize: 13),
+                child: Text(
+                  config.strings.skipVersionButton,
+                  style: const TextStyle(fontSize: 13),
                 ),
               ),
             if (showDoNotAskAgain)
               CupertinoButton(
                 padding: EdgeInsets.zero,
                 onPressed: onDoNotAskAgain,
-                child: const Text(
-                  'Don\'t remind me again',
-                  style: TextStyle(fontSize: 13),
+                child: Text(
+                  config.strings.doNotAskAgainButton,
+                  style: const TextStyle(fontSize: 13),
                 ),
               ),
           ],
@@ -766,7 +1935,7 @@ class AppUpdater {
   }
 
   /// Build Fluent Design dialog (Windows style)
-  static Widget _buildFluentDialog(
+  Widget _buildFluentDialog(
     BuildContext context, {
     required UpdateInfo updateInfo,
     required String title,
@@ -775,6 +1944,7 @@ class AppUpdater {
     required String updateText,
     required bool showSkipVersion,
     required bool showDoNotAskAgain,
+    required bool showReleaseNotes,
     required bool isPersistent,
     required VoidCallback? onCancel,
     required VoidCallback? onUpdate,
@@ -782,12 +1952,14 @@ class AppUpdater {
     required VoidCallback? onDoNotAskAgain,
   }) {
     final colorScheme = Theme.of(context).colorScheme;
+    final urgencyColor = _getUrgencyColor(updateInfo.urgency, context);
+    final urgencyIcon = _getUrgencyIcon(updateInfo.urgency);
 
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       elevation: 8,
       child: Container(
-        constraints: const BoxConstraints(maxWidth: 400, minWidth: 320),
+        constraints: const BoxConstraints(maxWidth: 450, minWidth: 320),
         padding: const EdgeInsets.all(24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -798,12 +1970,12 @@ class AppUpdater {
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: colorScheme.primary.withValues(alpha: 0.1),
+                    color: urgencyColor.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(4),
                   ),
                   child: Icon(
-                    Icons.system_update_alt,
-                    color: colorScheme.primary,
+                    urgencyIcon,
+                    color: urgencyColor,
                     size: 24,
                   ),
                 ),
@@ -825,6 +1997,39 @@ class AppUpdater {
                     color: colorScheme.onSurface.withValues(alpha: 0.8),
                   ),
             ),
+            if (showReleaseNotes && updateInfo.releaseNotes != null) ...[
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: colorScheme.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(color: colorScheme.outline.withValues(alpha: 0.3)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      config.strings.releaseNotesTitle,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxHeight: 150),
+                      child: SingleChildScrollView(
+                        child: Text(
+                          updateInfo.releaseNotes!,
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             if (showSkipVersion || showDoNotAskAgain) ...[
               const SizedBox(height: 16),
               if (showSkipVersion)
@@ -839,7 +2044,7 @@ class AppUpdater {
                             size: 16, color: colorScheme.primary),
                         const SizedBox(width: 4),
                         Text(
-                          'Skip this version',
+                          config.strings.skipVersionButton,
                           style: TextStyle(
                             color: colorScheme.primary,
                             fontSize: 13,
@@ -861,7 +2066,7 @@ class AppUpdater {
                             size: 16, color: colorScheme.primary),
                         const SizedBox(width: 4),
                         Text(
-                          'Don\'t remind me again',
+                          config.strings.doNotAskAgainButton,
                           style: TextStyle(
                             color: colorScheme.primary,
                             fontSize: 13,
@@ -920,7 +2125,7 @@ class AppUpdater {
   }
 
   /// Build Adwaita dialog (Linux/GNOME style)
-  static Widget _buildAdwaitaDialog(
+  Widget _buildAdwaitaDialog(
     BuildContext context, {
     required UpdateInfo updateInfo,
     required String title,
@@ -929,6 +2134,7 @@ class AppUpdater {
     required String updateText,
     required bool showSkipVersion,
     required bool showDoNotAskAgain,
+    required bool showReleaseNotes,
     required bool isPersistent,
     required VoidCallback? onCancel,
     required VoidCallback? onUpdate,
@@ -936,11 +2142,13 @@ class AppUpdater {
     required VoidCallback? onDoNotAskAgain,
   }) {
     final colorScheme = Theme.of(context).colorScheme;
+    final urgencyColor = _getUrgencyColor(updateInfo.urgency, context);
+    final urgencyIcon = _getUrgencyIcon(updateInfo.urgency);
 
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: Container(
-        constraints: const BoxConstraints(maxWidth: 400, minWidth: 320),
+        constraints: const BoxConstraints(maxWidth: 450, minWidth: 320),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -981,51 +2189,80 @@ class AppUpdater {
               ),
             ),
             // Content
-            Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: colorScheme.primary.withValues(alpha: 0.1),
-                      shape: BoxShape.circle,
+            Flexible(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: urgencyColor.withValues(alpha: 0.1),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        urgencyIcon,
+                        size: 48,
+                        color: urgencyColor,
+                      ),
                     ),
-                    child: Icon(
-                      Icons.system_update,
-                      size: 48,
-                      color: colorScheme.primary,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    message,
-                    textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.bodyLarge,
-                  ),
-                  if (showSkipVersion || showDoNotAskAgain) ...[
                     const SizedBox(height: 16),
-                    if (showSkipVersion)
-                      TextButton(
-                        onPressed: onSkipVersion,
-                        style: TextButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 8),
+                    Text(
+                      message,
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.bodyLarge,
+                    ),
+                    if (showReleaseNotes && updateInfo.releaseNotes != null) ...[
+                      const SizedBox(height: 16),
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: colorScheme.surfaceContainerHighest,
+                          borderRadius: BorderRadius.circular(8),
                         ),
-                        child: const Text('Skip this version'),
-                      ),
-                    if (showDoNotAskAgain)
-                      TextButton(
-                        onPressed: onDoNotAskAgain,
-                        style: TextButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 8),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              config.strings.releaseNotesTitle,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 14,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              updateInfo.releaseNotes!,
+                              style: const TextStyle(fontSize: 13),
+                            ),
+                          ],
                         ),
-                        child: const Text('Don\'t remind me again'),
                       ),
+                    ],
+                    if (showSkipVersion || showDoNotAskAgain) ...[
+                      const SizedBox(height: 16),
+                      if (showSkipVersion)
+                        TextButton(
+                          onPressed: onSkipVersion,
+                          style: TextButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 8),
+                          ),
+                          child: Text(config.strings.skipVersionButton),
+                        ),
+                      if (showDoNotAskAgain)
+                        TextButton(
+                          onPressed: onDoNotAskAgain,
+                          style: TextButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 8),
+                          ),
+                          child: Text(config.strings.doNotAskAgainButton),
+                        ),
+                    ],
                   ],
-                ],
+                ),
               ),
             ),
             // Action buttons (Adwaita style - full width at bottom)
@@ -1101,7 +2338,23 @@ class AppUpdater {
     );
   }
 
-  /// Show platform-appropriate update dialog
+  // ===========================================================================
+  // DIALOG DISPLAY METHODS
+  // ===========================================================================
+
+  /// Show platform-appropriate update dialog.
+  ///
+  /// This method displays an update dialog with the specified options. If no
+  /// [updateInfo] is provided, it will check for updates first.
+  ///
+  /// ```dart
+  /// await appUpdater.showUpdateDialog(
+  ///   context,
+  ///   showSkipVersion: true,
+  ///   showDoNotAskAgain: true,
+  ///   showReleaseNotes: true,
+  /// );
+  /// ```
   Future<void> showUpdateDialog(
     BuildContext context, {
     UpdateInfo? updateInfo,
@@ -1113,6 +2366,7 @@ class AppUpdater {
     bool isPersistent = false,
     bool showSkipVersion = false,
     bool showDoNotAskAgain = false,
+    bool showReleaseNotes = true,
     UpdateDialogStyle dialogStyle = UpdateDialogStyle.adaptive,
     Widget? customDialog,
     VoidCallback? onCancel,
@@ -1123,33 +2377,52 @@ class AppUpdater {
 
     if (!info.updateAvailable) return;
 
-    // Check preferences if showSkipVersion or showDoNotAskAgain is enabled
-    if (showSkipVersion && info.latestVersion != null) {
-      final isSkipped =
-          await UpdatePreferences.isVersionSkipped(info.latestVersion!);
-      if (isSkipped) return;
-    }
+    // Override persistence for mandatory updates
+    final shouldBePersistent = isPersistent || info.isMandatory;
 
-    if (showDoNotAskAgain) {
-      final doNotAsk = await UpdatePreferences.isDoNotAskAgain();
-      if (doNotAsk) return;
+    // Check preferences if showSkipVersion or showDoNotAskAgain is enabled
+    // But skip these checks for mandatory updates
+    if (!info.isMandatory) {
+      if (showSkipVersion && info.latestVersion != null) {
+        final isSkipped =
+            await UpdatePreferences.isVersionSkipped(info.latestVersion!);
+        if (isSkipped) return;
+      }
+
+      if (showDoNotAskAgain) {
+        final doNotAsk = await UpdatePreferences.isDoNotAskAgain();
+        if (doNotAsk) return;
+      }
     }
 
     // Check if context is still mounted
     if (!context.mounted) return;
 
-    const defaultTitle = 'Update Available';
-    final defaultMessage =
-        'A new version (${info.latestVersion}) is available. You are currently on version ${info.currentVersion}.';
-    const defaultCancelText = 'Later';
-    const defaultUpdateText = 'Update Now';
+    // Track analytics
+    _trackEvent(
+      UpdateAnalyticsEvent.dialogShown,
+      latestVersion: info.latestVersion,
+      urgency: info.urgency,
+    );
+    await UpdatePreferences.incrementUpdateImpressions();
+
+    // Get localized strings
+    final strings = config.strings;
+    final defaultTitle = info.isMandatory
+        ? strings.criticalUpdateTitle
+        : strings.updateAvailableTitle;
+    final defaultMessage = info.isMandatory
+        ? strings.criticalUpdateMessage
+        : strings.formatUpdateMessage(
+            info.currentVersion, info.latestVersion ?? '');
 
     if (customDialog != null) {
+      if (!context.mounted) return;
       await showDialog(
         context: context,
-        barrierDismissible: isDismissible && !isPersistent,
-        builder: (context) => PopScope(
-          canPop: isDismissible && !isPersistent,
+        barrierDismissible: isDismissible && !shouldBePersistent,
+        builder: (dialogContext) => PopScope(
+          canPop: isDismissible && !shouldBePersistent,
           child: customDialog,
         ),
       );
@@ -1160,6 +2433,10 @@ class AppUpdater {
     void handleSkipVersion() {
       if (info.latestVersion != null) {
         UpdatePreferences.skipVersion(info.latestVersion!);
+        _trackEvent(
+          UpdateAnalyticsEvent.versionSkipped,
+          latestVersion: info.latestVersion,
+        );
       }
       Navigator.of(context).pop();
     }
@@ -1167,8 +2444,33 @@ class AppUpdater {
     // Handle do not ask again callback
     void handleDoNotAskAgain() {
       UpdatePreferences.setDoNotAskAgain(true);
+      _trackEvent(UpdateAnalyticsEvent.doNotAskAgain);
       Navigator.of(context).pop();
     }
+
+    // Handle cancel callback
+    void handleCancel() {
+      UpdatePreferences.setLastDismissedTime(DateTime.now());
+      UpdatePreferences.incrementUpdateDismissals();
+      _trackEvent(
+        UpdateAnalyticsEvent.updateDeclined,
+        latestVersion: info.latestVersion,
+      );
+      onCancel?.call();
+    }
+
+    // Handle update callback
+    void handleUpdate() {
+      _trackEvent(
+        UpdateAnalyticsEvent.updateAccepted,
+        latestVersion: info.latestVersion,
+      );
+      _trackEvent(UpdateAnalyticsEvent.storeOpened);
+      onUpdate?.call();
+    }
+
+    // Check mounted before building dialogs
+    if (!context.mounted) return;
 
     // Determine which style to use
     final style = dialogStyle == UpdateDialogStyle.adaptive
@@ -1183,13 +2485,14 @@ class AppUpdater {
           updateInfo: info,
           title: title ?? defaultTitle,
           message: message ?? defaultMessage,
-          cancelText: cancelText ?? defaultCancelText,
-          updateText: updateText ?? defaultUpdateText,
-          showSkipVersion: showSkipVersion,
-          showDoNotAskAgain: showDoNotAskAgain,
-          isPersistent: isPersistent,
-          onCancel: onCancel,
-          onUpdate: onUpdate,
+          cancelText: cancelText ?? strings.laterButton,
+          updateText: updateText ?? strings.updateButton,
+          showSkipVersion: showSkipVersion && !info.isMandatory,
+          showDoNotAskAgain: showDoNotAskAgain && !info.isMandatory,
+          showReleaseNotes: showReleaseNotes,
+          isPersistent: shouldBePersistent,
+          onCancel: handleCancel,
+          onUpdate: handleUpdate,
           onSkipVersion: handleSkipVersion,
           onDoNotAskAgain: handleDoNotAskAgain,
         );
@@ -1200,13 +2503,14 @@ class AppUpdater {
           updateInfo: info,
           title: title ?? defaultTitle,
           message: message ?? defaultMessage,
-          cancelText: cancelText ?? defaultCancelText,
-          updateText: updateText ?? defaultUpdateText,
-          showSkipVersion: showSkipVersion,
-          showDoNotAskAgain: showDoNotAskAgain,
-          isPersistent: isPersistent,
-          onCancel: onCancel,
-          onUpdate: onUpdate,
+          cancelText: cancelText ?? strings.laterButton,
+          updateText: updateText ?? strings.updateButton,
+          showSkipVersion: showSkipVersion && !info.isMandatory,
+          showDoNotAskAgain: showDoNotAskAgain && !info.isMandatory,
+          showReleaseNotes: showReleaseNotes,
+          isPersistent: shouldBePersistent,
+          onCancel: handleCancel,
+          onUpdate: handleUpdate,
           onSkipVersion: handleSkipVersion,
           onDoNotAskAgain: handleDoNotAskAgain,
         );
@@ -1217,13 +2521,14 @@ class AppUpdater {
           updateInfo: info,
           title: title ?? defaultTitle,
           message: message ?? defaultMessage,
-          cancelText: cancelText ?? defaultCancelText,
-          updateText: updateText ?? defaultUpdateText,
-          showSkipVersion: showSkipVersion,
-          showDoNotAskAgain: showDoNotAskAgain,
-          isPersistent: isPersistent,
-          onCancel: onCancel,
-          onUpdate: onUpdate,
+          cancelText: cancelText ?? strings.laterButton,
+          updateText: updateText ?? strings.updateButton,
+          showSkipVersion: showSkipVersion && !info.isMandatory,
+          showDoNotAskAgain: showDoNotAskAgain && !info.isMandatory,
+          showReleaseNotes: showReleaseNotes,
+          isPersistent: shouldBePersistent,
+          onCancel: handleCancel,
+          onUpdate: handleUpdate,
           onSkipVersion: handleSkipVersion,
           onDoNotAskAgain: handleDoNotAskAgain,
         );
@@ -1235,13 +2540,14 @@ class AppUpdater {
           updateInfo: info,
           title: title ?? defaultTitle,
           message: message ?? defaultMessage,
-          cancelText: cancelText ?? defaultCancelText,
-          updateText: updateText ?? defaultUpdateText,
-          showSkipVersion: showSkipVersion,
-          showDoNotAskAgain: showDoNotAskAgain,
-          isPersistent: isPersistent,
-          onCancel: onCancel,
-          onUpdate: onUpdate,
+          cancelText: cancelText ?? strings.laterButton,
+          updateText: updateText ?? strings.updateButton,
+          showSkipVersion: showSkipVersion && !info.isMandatory,
+          showDoNotAskAgain: showDoNotAskAgain && !info.isMandatory,
+          showReleaseNotes: showReleaseNotes,
+          isPersistent: shouldBePersistent,
+          onCancel: handleCancel,
+          onUpdate: handleUpdate,
           onSkipVersion: handleSkipVersion,
           onDoNotAskAgain: handleDoNotAskAgain,
         );
@@ -1249,7 +2555,7 @@ class AppUpdater {
     }
 
     // Wrap with PopScope for persistent dialogs
-    if (isPersistent) {
+    if (shouldBePersistent) {
       dialog = PopScope(
         canPop: false,
         child: dialog,
@@ -1263,20 +2569,35 @@ class AppUpdater {
     if (style == UpdateDialogStyle.cupertino) {
       await showCupertinoDialog(
         context: context,
-        barrierDismissible: isDismissible && !isPersistent,
+        barrierDismissible: isDismissible && !shouldBePersistent,
         builder: (context) => dialog,
       );
     } else {
       await showDialog(
         context: context,
-        barrierDismissible: isDismissible && !isPersistent,
+        barrierDismissible: isDismissible && !shouldBePersistent,
         builder: (context) => dialog,
       );
     }
   }
 
-  /// Check for update and show dialog if available
-  /// Returns the UpdateInfo object
+  /// Check for update and show dialog if available.
+  ///
+  /// This is a convenience method that combines [checkForUpdate] and
+  /// [showUpdateDialog]. Returns the [UpdateInfo] object.
+  ///
+  /// ```dart
+  /// final updateInfo = await appUpdater.checkAndShowUpdateDialog(
+  ///   context,
+  ///   showSkipVersion: true,
+  ///   showDoNotAskAgain: true,
+  ///   onNoUpdate: () {
+  ///     ScaffoldMessenger.of(context).showSnackBar(
+  ///       const SnackBar(content: Text('App is up to date!')),
+  ///     );
+  ///   },
+  /// );
+  /// ```
   Future<UpdateInfo> checkAndShowUpdateDialog(
     BuildContext context, {
     String? title,
@@ -1287,6 +2608,7 @@ class AppUpdater {
     bool isPersistent = false,
     bool showSkipVersion = false,
     bool showDoNotAskAgain = false,
+    bool showReleaseNotes = true,
     UpdateDialogStyle dialogStyle = UpdateDialogStyle.adaptive,
     Widget? customDialog,
     VoidCallback? onNoUpdate,
@@ -1300,21 +2622,23 @@ class AppUpdater {
       return updateInfo;
     }
 
-    // Check preferences
-    if (showSkipVersion && updateInfo.latestVersion != null) {
-      final isSkipped =
-          await UpdatePreferences.isVersionSkipped(updateInfo.latestVersion!);
-      if (isSkipped) {
-        onNoUpdate?.call();
-        return updateInfo;
+    // Check preferences (but not for mandatory updates)
+    if (!updateInfo.isMandatory) {
+      if (showSkipVersion && updateInfo.latestVersion != null) {
+        final isSkipped =
+            await UpdatePreferences.isVersionSkipped(updateInfo.latestVersion!);
+        if (isSkipped) {
+          onNoUpdate?.call();
+          return updateInfo;
+        }
       }
-    }
 
-    if (showDoNotAskAgain) {
-      final doNotAsk = await UpdatePreferences.isDoNotAskAgain();
-      if (doNotAsk) {
-        onNoUpdate?.call();
-        return updateInfo;
+      if (showDoNotAskAgain) {
+        final doNotAsk = await UpdatePreferences.isDoNotAskAgain();
+        if (doNotAsk) {
+          onNoUpdate?.call();
+          return updateInfo;
+        }
       }
     }
 
@@ -1330,6 +2654,7 @@ class AppUpdater {
         isPersistent: isPersistent,
         showSkipVersion: showSkipVersion,
         showDoNotAskAgain: showDoNotAskAgain,
+        showReleaseNotes: showReleaseNotes,
         dialogStyle: dialogStyle,
         customDialog: customDialog,
         onCancel: onCancel,
@@ -1340,11 +2665,85 @@ class AppUpdater {
     return updateInfo;
   }
 
-  /// Open the app store for the current platform
+  // ===========================================================================
+  // BACKGROUND CHECKING
+  // ===========================================================================
+
+  /// Start periodic background update checking.
+  ///
+  /// This method starts a timer that periodically checks for updates in the
+  /// background. When an update is found, it will be emitted on [updateStream].
+  ///
+  /// ```dart
+  /// // Start checking every hour
+  /// appUpdater.startBackgroundChecking(Duration(hours: 1));
+  ///
+  /// // Listen for updates
+  /// appUpdater.updateStream.listen((updateInfo) {
+  ///   if (updateInfo.updateAvailable) {
+  ///     // Show notification or update UI
+  ///   }
+  /// });
+  /// ```
+  void startBackgroundChecking(Duration interval) {
+    stopBackgroundChecking(); // Cancel any existing timer
+
+    _backgroundCheckTimer = Timer.periodic(interval, (_) async {
+      final updateInfo = await checkForUpdate(respectFrequency: false);
+      if (updateInfo.updateAvailable) {
+        _updateStreamController.add(updateInfo);
+      }
+    });
+
+    // Also perform an immediate check
+    checkForUpdate(respectFrequency: false).then((updateInfo) {
+      if (updateInfo.updateAvailable) {
+        _updateStreamController.add(updateInfo);
+      }
+    });
+  }
+
+  /// Stop periodic background update checking.
+  ///
+  /// Call this to stop the background checking timer started by
+  /// [startBackgroundChecking].
+  void stopBackgroundChecking() {
+    _backgroundCheckTimer?.cancel();
+    _backgroundCheckTimer = null;
+  }
+
+  /// Perform a single background check and emit result on stream.
+  ///
+  /// Unlike [checkForUpdate], this method respects the check frequency
+  /// and emits the result on [updateStream] instead of returning it.
+  Future<void> performBackgroundCheck() async {
+    final updateInfo = await checkForUpdate();
+    if (updateInfo.updateAvailable) {
+      _updateStreamController.add(updateInfo);
+    }
+  }
+
+  // ===========================================================================
+  // STORE OPERATIONS
+  // ===========================================================================
+
+  /// Open the app store for the current platform.
+  ///
+  /// Opens the appropriate store page based on platform and configuration:
+  /// - iOS: App Store
+  /// - Android: Play Store
+  /// - macOS: Mac App Store
+  /// - Windows: Microsoft Store
+  /// - Linux: Snap Store or Flathub
+  ///
+  /// If GitHub releases are configured and no store URL is available,
+  /// opens the GitHub releases page.
   Future<void> openStore() async {
     if (kIsWeb) {
       throw UnsupportedError('Cannot open store on web platform');
     }
+
+    _trackEvent(UpdateAnalyticsEvent.storeOpened);
 
     final url = getStoreUrl();
 
@@ -1362,13 +2761,31 @@ class AppUpdater {
       }
     }
   }
+
+  /// Open TestFlight for iOS beta testing.
+  ///
+  /// Opens the TestFlight app or web page for the configured app.
+  Future<void> openTestFlight() async {
+    final url = getTestFlightUrl();
+    if (url == null) {
+      throw UnsupportedError('TestFlight not configured');
+    }
+    await _launchUrl(url);
+  }
 }
 
-/// Class to open app stores (for backward compatibility)
+// =============================================================================
+// BACKWARD COMPATIBILITY
+// =============================================================================
+
+/// Class to open app stores (for backward compatibility).
+///
+/// @deprecated Use [AppUpdater.openStore] instead.
 class OpenStore {
   OpenStore._();
   static final OpenStore instance = OpenStore._();
 
+  /// Opens the appropriate app store based on platform.
   Future<void> open({
     String? appName,
     String? appStoreId,
@@ -1391,7 +2808,9 @@ class OpenStore {
   }
 }
 
-/// Convenience function to open app store (for backward compatibility)
+/// Convenience function to open app store (for backward compatibility).
+///
+/// @deprecated Use [AppUpdater.openStore] instead.
 Future<void> openAppStore({
   String? appName,
   String? iosAppId,

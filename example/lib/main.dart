@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:app_updater/app_updater.dart';
 import 'package:flutter/material.dart';
 
@@ -29,34 +31,95 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-  // Create AppUpdater instance with configuration
-  final appUpdater = AppUpdater.configure(
-    // Mobile
-    iosAppId: '123456789',
-    // androidPackageName is auto-detected!
-    // Desktop
-    macAppId: '987654321',
-    microsoftProductId: '9NBLGGH4NNS1',
-    snapName: 'example-app',
-    flathubAppId: 'com.example.app',
-    linuxStoreType: LinuxStoreType.snap,
-  );
+  // Create AppUpdater instance with all new features configured
+  late final AppUpdater appUpdater;
 
-  // Mock UpdateInfo for demonstrations
-  UpdateInfo get _mockUpdateInfo => UpdateInfo(
-        currentVersion: '1.0.0',
-        latestVersion: '2.0.0',
-        updateUrl: 'https://example.com',
-        updateAvailable: true,
-      );
+  // Stream subscription for background updates
+  StreamSubscription<UpdateInfo>? _updateSubscription;
+
+  // Track if background checking is active
+  bool _isBackgroundCheckingActive = false;
 
   @override
   void initState() {
     super.initState();
+
+    // Initialize AppUpdater with new features
+    appUpdater = AppUpdater.configure(
+      // Mobile
+      iosAppId: '123456789',
+      // androidPackageName is auto-detected!
+
+      // Desktop
+      macAppId: '987654321',
+      microsoftProductId: '9NBLGGH4NNS1',
+      snapName: 'example-app',
+      flathubAppId: 'com.example.app',
+      linuxStoreType: LinuxStoreType.snap,
+
+      // GitHub Releases support
+      githubOwner: 'mantreshkhurana',
+      githubRepo: 'app_updater',
+      githubIncludePrereleases: false,
+
+      // Update frequency control - only check once per day
+      checkFrequency: const Duration(days: 1),
+
+      // Force update if below this version
+      minimumVersion: '1.0.0',
+
+      // Analytics callback
+      onAnalyticsEvent: (event) {
+        debugPrint('Analytics Event: ${event.eventName}');
+        debugPrint('  Platform: ${event.platform}');
+        debugPrint('  Current Version: ${event.currentVersion}');
+        if (event.latestVersion != null) {
+          debugPrint('  Latest Version: ${event.latestVersion}');
+        }
+        if (event.urgency != null) {
+          debugPrint('  Urgency: ${event.urgency}');
+        }
+      },
+
+      // Localized strings (using default English)
+      strings: const UpdateStrings(),
+    );
+
     // Check for updates on app start
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkForUpdates();
     });
+  }
+
+  @override
+  void dispose() {
+    // Clean up resources
+    _updateSubscription?.cancel();
+    appUpdater.dispose();
+    super.dispose();
+  }
+
+  // Mock UpdateInfo for demonstrations with release notes
+  UpdateInfo _createMockUpdateInfo({
+    UpdateUrgency urgency = UpdateUrgency.medium,
+    bool isMandatory = false,
+    String? releaseNotes,
+  }) {
+    return UpdateInfo(
+      currentVersion: '1.0.0',
+      latestVersion: '2.0.0',
+      updateUrl: 'https://example.com',
+      updateAvailable: true,
+      urgency: urgency,
+      isMandatory: isMandatory,
+      releaseNotes: releaseNotes ??
+          '• New dark mode support\n'
+              '• Performance improvements\n'
+              '• Bug fixes and stability improvements\n'
+              '• Updated UI components',
+      releaseDate: DateTime.now().subtract(const Duration(days: 2)),
+      updateSizeBytes: 15728640, // 15 MB
+    );
   }
 
   Future<void> _resetPreferences() async {
@@ -72,6 +135,7 @@ class _MyHomePageState extends State<MyHomePage> {
       context,
       showSkipVersion: true,
       showDoNotAskAgain: true,
+      showReleaseNotes: true,
       isDismissible: true,
       dialogStyle: UpdateDialogStyle.adaptive,
       onNoUpdate: () {
@@ -88,12 +152,74 @@ class _MyHomePageState extends State<MyHomePage> {
     debugPrint('Current version: ${updateInfo.currentVersion}');
     debugPrint('Latest version: ${updateInfo.latestVersion}');
     debugPrint('Update available: ${updateInfo.updateAvailable}');
+    debugPrint('Release notes: ${updateInfo.releaseNotes}');
+    debugPrint('Urgency: ${updateInfo.urgency}');
   }
 
   void _showSnackBar(String message) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message)),
+    );
+  }
+
+  void _toggleBackgroundChecking() {
+    setState(() {
+      if (_isBackgroundCheckingActive) {
+        // Stop background checking
+        appUpdater.stopBackgroundChecking();
+        _updateSubscription?.cancel();
+        _updateSubscription = null;
+        _isBackgroundCheckingActive = false;
+        _showSnackBar('Background checking stopped');
+      } else {
+        // Start background checking every 30 seconds (for demo purposes)
+        appUpdater.startBackgroundChecking(const Duration(seconds: 30));
+
+        // Listen for updates
+        _updateSubscription = appUpdater.updateStream.listen((updateInfo) {
+          if (updateInfo.updateAvailable && mounted) {
+            _showSnackBar(
+                'Background check: Update ${updateInfo.latestVersion} available!');
+          }
+        });
+
+        _isBackgroundCheckingActive = true;
+        _showSnackBar('Background checking started (every 30s)');
+      }
+    });
+  }
+
+  Future<void> _showAnalyticsStats() async {
+    final impressions = await UpdatePreferences.getUpdateImpressions();
+    final dismissals = await UpdatePreferences.getUpdateDismissals();
+    final lastCheck = await UpdatePreferences.getLastCheckTime();
+
+    if (!mounted) return;
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Update Analytics'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Dialog Impressions: $impressions'),
+            const SizedBox(height: 8),
+            Text('Dialog Dismissals: $dismissals'),
+            const SizedBox(height: 8),
+            Text(
+                'Last Check: ${lastCheck?.toString().split('.').first ?? 'Never'}'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -104,6 +230,11 @@ class _MyHomePageState extends State<MyHomePage> {
         title: const Text('App Updater Example'),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.analytics),
+            tooltip: 'View analytics',
+            onPressed: _showAnalyticsStats,
+          ),
           IconButton(
             icon: const Icon(Icons.refresh),
             tooltip: 'Reset update preferences',
@@ -124,7 +255,7 @@ class _MyHomePageState extends State<MyHomePage> {
             ),
             const SizedBox(height: 16),
             const Text(
-              'App Updater Demo',
+              'App Updater v2.0 Demo',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 24,
@@ -133,11 +264,64 @@ class _MyHomePageState extends State<MyHomePage> {
             ),
             const SizedBox(height: 8),
             const Text(
-              'Tap the buttons below to preview update dialogs',
+              'Tap the buttons below to preview update dialogs and new features',
               textAlign: TextAlign.center,
               style: TextStyle(color: Colors.grey),
             ),
             const SizedBox(height: 32),
+
+            // New Features Section
+            _buildSection(
+              title: 'New Features (v2.0)',
+              subtitle: 'Explore the new capabilities',
+              children: [
+                _buildFeatureButton(
+                  label: 'With Release Notes',
+                  subtitle: 'Shows changelog in dialog',
+                  icon: Icons.article,
+                  onPressed: () => _showDialogWithReleaseNotes(),
+                ),
+                _buildFeatureButton(
+                  label: 'Urgency: Critical',
+                  subtitle: 'Red icon, security update',
+                  icon: Icons.error,
+                  color: Colors.red,
+                  onPressed: () => _showDialogWithUrgency(UpdateUrgency.critical),
+                ),
+                _buildFeatureButton(
+                  label: 'Urgency: High',
+                  subtitle: 'Orange icon, important',
+                  icon: Icons.warning_amber,
+                  color: Colors.orange,
+                  onPressed: () => _showDialogWithUrgency(UpdateUrgency.high),
+                ),
+                _buildFeatureButton(
+                  label: 'Urgency: Low',
+                  subtitle: 'Grey icon, minor update',
+                  icon: Icons.info_outline,
+                  color: Colors.grey,
+                  onPressed: () => _showDialogWithUrgency(UpdateUrgency.low),
+                ),
+                _buildFeatureButton(
+                  label: 'Mandatory Update',
+                  subtitle: 'Cannot skip or dismiss',
+                  icon: Icons.lock,
+                  color: Colors.red,
+                  onPressed: () => _showMandatoryUpdate(),
+                ),
+                _buildFeatureButton(
+                  label: 'Background Checking',
+                  subtitle: _isBackgroundCheckingActive ? 'Active' : 'Inactive',
+                  icon: _isBackgroundCheckingActive
+                      ? Icons.sync
+                      : Icons.sync_disabled,
+                  color:
+                      _isBackgroundCheckingActive ? Colors.green : Colors.grey,
+                  onPressed: _toggleBackgroundChecking,
+                ),
+              ],
+            ),
+            const SizedBox(height: 24),
 
             // Platform-Specific Dialogs Section
             _buildSection(
@@ -214,13 +398,6 @@ class _MyHomePageState extends State<MyHomePage> {
                     message: 'Version 2.0.0 is now available (you have 1.0.0).',
                   ),
                 ),
-                _buildPlatformButton(
-                  label: 'Custom',
-                  subtitle: 'Your own UI',
-                  icon: Icons.widgets,
-                  color: Colors.teal,
-                  onPressed: () => _showCustomWidgetDialog(),
-                ),
               ],
             ),
             const SizedBox(height: 24),
@@ -276,43 +453,28 @@ class _MyHomePageState extends State<MyHomePage> {
             ),
             const SizedBox(height: 24),
 
-            // Mandatory Update Section
+            // Localization Section
             _buildSection(
-              title: 'Mandatory Updates',
-              subtitle: 'Force users to update (no cancel option)',
+              title: 'Localization',
+              subtitle: 'Dialog text in different languages',
               children: [
                 _buildFeatureButton(
-                  label: 'Critical Update',
-                  subtitle: 'Persistent dialog - must update',
-                  icon: Icons.warning_amber,
-                  color: Colors.red,
-                  onPressed: () => _showPersistentDialog(
-                    title: 'Critical Update Required',
-                    message:
-                        'This update contains important security fixes. Please update to continue using the app.',
-                  ),
+                  label: 'French',
+                  subtitle: 'Mise à jour disponible',
+                  icon: Icons.language,
+                  onPressed: () => _showLocalizedDialog('fr'),
                 ),
                 _buildFeatureButton(
-                  label: 'Mandatory Feature Update',
-                  subtitle: 'Required for app functionality',
-                  icon: Icons.new_releases,
-                  color: Colors.orange,
-                  onPressed: () => _showPersistentDialog(
-                    title: 'Update Required',
-                    message:
-                        'This version is no longer supported. Please update to access new features and improvements.',
-                  ),
+                  label: 'Spanish',
+                  subtitle: 'Actualización disponible',
+                  icon: Icons.language,
+                  onPressed: () => _showLocalizedDialog('es'),
                 ),
                 _buildFeatureButton(
-                  label: 'Breaking Change Update',
-                  subtitle: 'API compatibility update',
-                  icon: Icons.api,
-                  color: Colors.deepOrange,
-                  onPressed: () => _showPersistentDialog(
-                    title: 'Important Update',
-                    message:
-                        'The current version is incompatible with our servers. Please update to continue.',
-                  ),
+                  label: 'German',
+                  subtitle: 'Update verfügbar',
+                  icon: Icons.language,
+                  onPressed: () => _showLocalizedDialog('de'),
                 ),
               ],
             ),
@@ -478,10 +640,11 @@ class _MyHomePageState extends State<MyHomePage> {
   }) async {
     await appUpdater.showUpdateDialog(
       context,
-      updateInfo: _mockUpdateInfo,
+      updateInfo: _createMockUpdateInfo(),
       dialogStyle: style,
       showSkipVersion: true,
       showDoNotAskAgain: true,
+      showReleaseNotes: true,
       title: title,
       message: message,
       onUpdate: () {
@@ -499,10 +662,11 @@ class _MyHomePageState extends State<MyHomePage> {
   }) async {
     await appUpdater.showUpdateDialog(
       context,
-      updateInfo: _mockUpdateInfo,
+      updateInfo: _createMockUpdateInfo(),
       dialogStyle: UpdateDialogStyle.adaptive,
       showSkipVersion: showSkipVersion,
       showDoNotAskAgain: showDoNotAskAgain,
+      showReleaseNotes: true,
       onUpdate: () {
         _showSnackBar('Update button pressed!');
       },
@@ -515,11 +679,12 @@ class _MyHomePageState extends State<MyHomePage> {
   Future<void> _showNonDismissibleDialog() async {
     await appUpdater.showUpdateDialog(
       context,
-      updateInfo: _mockUpdateInfo,
+      updateInfo: _createMockUpdateInfo(),
       dialogStyle: UpdateDialogStyle.adaptive,
       isDismissible: false,
       showSkipVersion: true,
       showDoNotAskAgain: true,
+      showReleaseNotes: true,
       onUpdate: () {
         _showSnackBar('Update button pressed!');
       },
@@ -529,20 +694,165 @@ class _MyHomePageState extends State<MyHomePage> {
     );
   }
 
-  Future<void> _showPersistentDialog({
-    required String title,
-    required String message,
-  }) async {
+  Future<void> _showDialogWithReleaseNotes() async {
     await appUpdater.showUpdateDialog(
       context,
-      updateInfo: _mockUpdateInfo,
+      updateInfo: _createMockUpdateInfo(
+        releaseNotes: '## What\'s New in v2.0.0\n\n'
+            '### Features\n'
+            '• Dark mode support with automatic switching\n'
+            '• New dashboard with analytics\n'
+            '• Improved search with filters\n\n'
+            '### Improvements\n'
+            '• 50% faster app startup\n'
+            '• Reduced memory usage\n'
+            '• Better battery efficiency\n\n'
+            '### Bug Fixes\n'
+            '• Fixed crash on login\n'
+            '• Fixed sync issues\n'
+            '• Various UI improvements',
+      ),
+      dialogStyle: UpdateDialogStyle.adaptive,
+      showReleaseNotes: true,
+      onUpdate: () {
+        _showSnackBar('Update button pressed!');
+      },
+      onCancel: () {
+        _showSnackBar('Cancel button pressed');
+      },
+    );
+  }
+
+  Future<void> _showDialogWithUrgency(UpdateUrgency urgency) async {
+    String message;
+    switch (urgency) {
+      case UpdateUrgency.critical:
+        message =
+            'This update contains critical security fixes. Please update immediately.';
+        break;
+      case UpdateUrgency.high:
+        message =
+            'This update contains important improvements. We strongly recommend updating.';
+        break;
+      case UpdateUrgency.low:
+        message =
+            'A minor update is available with small improvements and bug fixes.';
+        break;
+      default:
+        message = 'A new version is available with new features and improvements.';
+    }
+
+    await appUpdater.showUpdateDialog(
+      context,
+      updateInfo: _createMockUpdateInfo(urgency: urgency),
+      dialogStyle: UpdateDialogStyle.adaptive,
+      message: message,
+      showReleaseNotes: true,
+      onUpdate: () {
+        _showSnackBar('Update button pressed!');
+      },
+      onCancel: () {
+        _showSnackBar('Cancel button pressed');
+      },
+    );
+  }
+
+  Future<void> _showMandatoryUpdate() async {
+    await appUpdater.showUpdateDialog(
+      context,
+      updateInfo: _createMockUpdateInfo(
+        urgency: UpdateUrgency.critical,
+        isMandatory: true,
+        releaseNotes: 'This update is required to continue using the app.\n\n'
+            '• Critical security vulnerability fixed\n'
+            '• API compatibility updates\n'
+            '• Required server-side changes',
+      ),
+      dialogStyle: UpdateDialogStyle.adaptive,
       isPersistent: true,
       isDismissible: false,
-      title: title,
-      message: message,
-      updateText: 'Update Now',
+      showReleaseNotes: true,
+      title: 'Mandatory Update Required',
+      message:
+          'Your app version is no longer supported. Please update to continue.',
       onUpdate: () {
         _showSnackBar('Redirecting to store...');
+      },
+    );
+  }
+
+  Future<void> _showLocalizedDialog(String languageCode) async {
+    UpdateStrings strings;
+
+    switch (languageCode) {
+      case 'fr':
+        strings = const UpdateStrings(
+          updateAvailableTitle: 'Mise à jour disponible',
+          updateAvailableMessage:
+              'Une nouvelle version ({latestVersion}) est disponible. Vous avez actuellement la version {currentVersion}.',
+          updateButton: 'Mettre à jour',
+          laterButton: 'Plus tard',
+          skipVersionButton: 'Ignorer cette version',
+          doNotAskAgainButton: 'Ne plus me rappeler',
+          releaseNotesTitle: 'Nouveautés',
+        );
+        break;
+      case 'es':
+        strings = const UpdateStrings(
+          updateAvailableTitle: 'Actualización disponible',
+          updateAvailableMessage:
+              'Una nueva versión ({latestVersion}) está disponible. Actualmente tienes la versión {currentVersion}.',
+          updateButton: 'Actualizar ahora',
+          laterButton: 'Más tarde',
+          skipVersionButton: 'Omitir esta versión',
+          doNotAskAgainButton: 'No volver a preguntar',
+          releaseNotesTitle: 'Novedades',
+        );
+        break;
+      case 'de':
+        strings = const UpdateStrings(
+          updateAvailableTitle: 'Update verfügbar',
+          updateAvailableMessage:
+              'Eine neue Version ({latestVersion}) ist verfügbar. Sie haben derzeit Version {currentVersion}.',
+          updateButton: 'Jetzt aktualisieren',
+          laterButton: 'Später',
+          skipVersionButton: 'Diese Version überspringen',
+          doNotAskAgainButton: 'Nicht mehr erinnern',
+          releaseNotesTitle: 'Neuigkeiten',
+        );
+        break;
+      default:
+        strings = const UpdateStrings();
+    }
+
+    // Create a temporary updater with localized strings
+    final localizedUpdater = AppUpdater.configure(
+      iosAppId: '123456789',
+      strings: strings,
+    );
+
+    final mockInfo = _createMockUpdateInfo();
+    final message = strings.formatUpdateMessage(
+      mockInfo.currentVersion,
+      mockInfo.latestVersion!,
+    );
+
+    await localizedUpdater.showUpdateDialog(
+      context,
+      updateInfo: mockInfo,
+      dialogStyle: UpdateDialogStyle.adaptive,
+      title: strings.updateAvailableTitle,
+      message: message,
+      updateText: strings.updateButton,
+      cancelText: strings.laterButton,
+      showSkipVersion: true,
+      showDoNotAskAgain: true,
+      showReleaseNotes: true,
+      onUpdate: () {
+        _showSnackBar('Update button pressed!');
+      },
+      onCancel: () {
+        _showSnackBar('Cancel button pressed');
       },
     );
   }
@@ -550,17 +860,18 @@ class _MyHomePageState extends State<MyHomePage> {
   Future<void> _showCustomMessageDialog() async {
     await appUpdater.showUpdateDialog(
       context,
-      updateInfo: _mockUpdateInfo,
+      updateInfo: _createMockUpdateInfo(),
       dialogStyle: UpdateDialogStyle.material,
       title: 'New Version Available!',
       message: 'We\'ve been working hard on exciting new features!\n\n'
           'What\'s new in v2.0.0:\n'
-          '- Dark mode support\n'
-          '- Performance improvements\n'
-          '- Bug fixes',
+          '• Dark mode support\n'
+          '• Performance improvements\n'
+          '• Bug fixes',
       updateText: 'Get It Now',
       cancelText: 'Maybe Later',
       showSkipVersion: true,
+      showReleaseNotes: false, // Using custom message instead
       onUpdate: () {
         _showSnackBar('Opening store...');
       },
@@ -573,7 +884,7 @@ class _MyHomePageState extends State<MyHomePage> {
   Future<void> _showCustomWidgetDialog() async {
     await appUpdater.showUpdateDialog(
       context,
-      updateInfo: _mockUpdateInfo,
+      updateInfo: _createMockUpdateInfo(),
       customDialog: Dialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         child: Container(
@@ -609,6 +920,25 @@ class _MyHomePageState extends State<MyHomePage> {
                 'Version 2.0.0 is here with amazing new features!',
                 textAlign: TextAlign.center,
                 style: TextStyle(color: Colors.grey.shade600),
+              ),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('✨ New dark mode',
+                        style: TextStyle(fontSize: 14)),
+                    Text('🚀 50% faster performance',
+                        style: TextStyle(fontSize: 14)),
+                    Text('🐛 Bug fixes',
+                        style: TextStyle(fontSize: 14)),
+                  ],
+                ),
               ),
               const SizedBox(height: 24),
               Row(
