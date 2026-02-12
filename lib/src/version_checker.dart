@@ -729,6 +729,38 @@ class AppUpdaterConfig {
   /// Include GitHub prereleases in update checks
   final bool githubIncludePrereleases;
 
+  /// GitHub personal access token for private repository support.
+  ///
+  /// This is the easiest way to access private GitHub repositories.
+  /// Simply pass your GitHub PAT and the package handles authentication:
+  /// ```dart
+  /// AppUpdater.configure(
+  ///   githubOwner: 'mycompany',
+  ///   githubRepo: 'private-app',
+  ///   githubToken: 'ghp_xxxxxxxxxxxxx',
+  /// );
+  /// ```
+  final String? githubToken;
+
+  /// Custom HTTP headers for GitHub API requests.
+  ///
+  /// Use this for advanced authentication scenarios (e.g., GitHub Enterprise)
+  /// or when you need full control over request headers:
+  /// ```dart
+  /// AppUpdater.configure(
+  ///   githubOwner: 'mycompany',
+  ///   githubRepo: 'private-app',
+  ///   githubHeaders: {
+  ///     'Authorization': 'token ghp_xxxxxxxxxxxxx',
+  ///     'Accept': 'application/vnd.github+json',
+  ///   },
+  /// );
+  /// ```
+  ///
+  /// Note: If both [githubToken] and [githubHeaders] are provided,
+  /// [githubHeaders] takes precedence for the `Authorization` header.
+  final Map<String, String>? githubHeaders;
+
   // === TestFlight Support (iOS) ===
 
   /// Enable TestFlight beta update checking
@@ -783,6 +815,8 @@ class AppUpdaterConfig {
     this.githubOwner,
     this.githubRepo,
     this.githubIncludePrereleases = false,
+    this.githubToken,
+    this.githubHeaders,
     this.testFlightEnabled = false,
     this.testFlightUrl,
     this.firebaseRemoteConfigEnabled = false,
@@ -808,6 +842,8 @@ class AppUpdaterConfig {
     String? githubOwner,
     String? githubRepo,
     bool? githubIncludePrereleases,
+    String? githubToken,
+    Map<String, String>? githubHeaders,
     bool? testFlightEnabled,
     String? testFlightUrl,
     bool? firebaseRemoteConfigEnabled,
@@ -832,6 +868,8 @@ class AppUpdaterConfig {
       githubRepo: githubRepo ?? this.githubRepo,
       githubIncludePrereleases:
           githubIncludePrereleases ?? this.githubIncludePrereleases,
+      githubToken: githubToken ?? this.githubToken,
+      githubHeaders: githubHeaders ?? this.githubHeaders,
       testFlightEnabled: testFlightEnabled ?? this.testFlightEnabled,
       testFlightUrl: testFlightUrl ?? this.testFlightUrl,
       firebaseRemoteConfigEnabled:
@@ -943,6 +981,8 @@ class AppUpdater {
     String? githubOwner,
     String? githubRepo,
     bool githubIncludePrereleases = false,
+    String? githubToken,
+    Map<String, String>? githubHeaders,
     bool testFlightEnabled = false,
     String? testFlightUrl,
     bool firebaseRemoteConfigEnabled = false,
@@ -966,6 +1006,8 @@ class AppUpdater {
       githubOwner: githubOwner,
       githubRepo: githubRepo,
       githubIncludePrereleases: githubIncludePrereleases,
+      githubToken: githubToken,
+      githubHeaders: githubHeaders,
       testFlightEnabled: testFlightEnabled,
       testFlightUrl: testFlightUrl,
       firebaseRemoteConfigEnabled: firebaseRemoteConfigEnabled,
@@ -1296,7 +1338,31 @@ class AppUpdater {
     return {};
   }
 
-  /// Fetch latest release from GitHub Releases
+  /// Build merged headers for GitHub API requests.
+  ///
+  /// Priority: githubHeaders > githubToken > defaults.
+  Map<String, String> _buildGitHubHeaders() {
+    final headers = <String, String>{
+      'Accept': 'application/vnd.github.v3+json',
+    };
+
+    // Apply token-based auth if provided
+    if (config.githubToken != null) {
+      headers['Authorization'] = 'token ${config.githubToken}';
+    }
+
+    // Apply custom headers (overrides token if both set)
+    if (config.githubHeaders != null) {
+      headers.addAll(config.githubHeaders!);
+    }
+
+    return headers;
+  }
+
+  /// Fetch latest release from GitHub Releases.
+  ///
+  /// Supports private repositories via [AppUpdaterConfig.githubToken]
+  /// or [AppUpdaterConfig.githubHeaders].
   Future<GitHubRelease?> _getLatestGitHubRelease() async {
     if (config.githubOwner == null || config.githubRepo == null) return null;
 
@@ -1305,9 +1371,7 @@ class AppUpdater {
           'https://api.github.com/repos/${config.githubOwner}/${config.githubRepo}/releases';
       final response = await http.get(
         Uri.parse(url),
-        headers: {
-          'Accept': 'application/vnd.github.v3+json',
-        },
+        headers: _buildGitHubHeaders(),
       );
 
       if (response.statusCode == 200) {

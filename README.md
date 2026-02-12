@@ -23,6 +23,10 @@ A comprehensive Flutter package to check for app updates and display platform-na
 - **Do Not Ask Again**: Remember user's preference to not show update dialogs
 - **Custom Endpoints**: Support for custom XML/JSON version endpoints
 
+### New in v2.1.0
+
+- **Private GitHub Repository Support**: Use `githubToken` or `githubHeaders` for private repos
+
 ### New in v2.0.0
 
 - **Release Notes Display**: Show what's new in each update
@@ -53,7 +57,7 @@ Add `app_updater` to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  app_updater: ^2.0.0
+  app_updater: ^2.1.0
 ```
 
 ## Quick Start
@@ -320,6 +324,34 @@ final appUpdater = AppUpdater.configure(
 // - Download URL from assets
 ```
 
+### Private GitHub Repositories
+
+For private repos, just pass your GitHub Personal Access Token:
+
+```dart
+final appUpdater = AppUpdater.configure(
+  githubOwner: 'mycompany',
+  githubRepo: 'private-app',
+  githubToken: 'ghp_xxxxxxxxxxxxx', // That's it!
+);
+```
+
+For GitHub Enterprise or advanced auth scenarios, use custom headers:
+
+```dart
+final appUpdater = AppUpdater.configure(
+  githubOwner: 'mycompany',
+  githubRepo: 'private-app',
+  githubHeaders: {
+    'Authorization': 'token ghp_xxxxxxxxxxxxx',
+    'Accept': 'application/vnd.github+json',
+    'X-GitHub-Api-Version': '2022-11-28',
+  },
+);
+```
+
+> **Note:** If both `githubToken` and `githubHeaders` are provided, values in `githubHeaders` take precedence for overlapping keys (e.g., `Authorization`).
+
 ### TestFlight Support (iOS)
 
 Support beta updates via TestFlight:
@@ -552,6 +584,8 @@ await appUpdater.showUpdateDialog(
 | `githubOwner` | `String?` | GitHub repository owner |
 | `githubRepo` | `String?` | GitHub repository name |
 | `githubIncludePrereleases` | `bool` | Include prereleases (default: false) |
+| `githubToken` | `String?` | GitHub PAT for private repos |
+| `githubHeaders` | `Map<String, String>?` | Custom HTTP headers for GitHub API |
 | `testFlightEnabled` | `bool` | Enable TestFlight (default: false) |
 | `testFlightUrl` | `String?` | Custom TestFlight URL |
 | `firebaseRemoteConfigEnabled` | `bool` | Enable Firebase (default: false) |
@@ -652,6 +686,7 @@ await appUpdater.showUpdateDialog(
 - Custom endpoints take priority over store checks
 - Firebase Remote Config takes highest priority when enabled
 - GitHub releases are checked before platform stores
+- Private GitHub repos require `githubToken` or `githubHeaders` for authentication
 - Release notes are automatically fetched from supported sources
 - Background checking requires calling `dispose()` when done
 

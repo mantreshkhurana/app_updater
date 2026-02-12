@@ -1,6 +1,6 @@
 name: app_updater
 description: A comprehensive Flutter package to check for app updates and display platform-native dialogs. Supports iOS, Android, macOS, Windows, and Linux with release notes, analytics, GitHub releases, Firebase Remote Config, localization, and more.
-version: 2.0.0
+version: 2.1.0
 homepage: https://github.com/mantreshkhurana/app_updater
 repository: https://github.com/mantreshkhurana/app_updater
 issue_tracker: https://github.com/mantreshkhurana/app_updater/issues

@@ -2,6 +2,43 @@
 
 All notable changes to this project will be documented in this file.
 
+## 2.1.0
+
+### New Features
+
+- **Private GitHub Repository Support**: Check for updates from private GitHub repositories
+  - New `githubToken` parameter for simple token-based authentication — just pass your GitHub PAT
+  - New `githubHeaders` parameter for custom HTTP headers (GitHub Enterprise, advanced auth)
+  - `githubToken` sets the `Authorization` header automatically; `githubHeaders` can override it
+  - Fully backward compatible — public repositories continue to work without any changes
+
+### Use Cases
+
+- Internal / enterprise Flutter apps using private GitHub repositories
+- Closed-source applications distributed outside Play Store / App Store
+- GitHub Enterprise environments requiring custom headers
+
+### Example
+
+```dart
+// Simple — just pass your token
+final appUpdater = AppUpdater.configure(
+  githubOwner: 'mycompany',
+  githubRepo: 'private-app',
+  githubToken: 'ghp_xxxxxxxxxxxxx',
+);
+
+// Advanced — full header control
+final appUpdater = AppUpdater.configure(
+  githubOwner: 'mycompany',
+  githubRepo: 'private-app',
+  githubHeaders: {
+    'Authorization': 'token ghp_xxxxxxxxxxxxx',
+    'Accept': 'application/vnd.github+json',
+  },
+);
+```
+
 ## 2.0.0
 
 ### New Features
